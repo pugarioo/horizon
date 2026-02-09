@@ -1,79 +1,64 @@
 import gc
-from typing import List, Optional
+from typing import List
 
-import yaml
-from llama_cpp import Llama
+from llama_cpp import Iterator, Llama
 from llama_cpp.llama_types import (
     ChatCompletionRequestMessage,
     CreateChatCompletionResponse,
+    CreateChatCompletionStreamResponse,
 )
-
-from src.paths import MODELS_CONFIG_PATH
 
 
 class AgentService:
-    def __init__(self) -> None:
-        self.model: Optional[Llama] = None
-        self.config = self._load_config()
+    def load(self, path: str) -> None:
+        """
+        Loads am SLM model from the given path.
 
-    def _load_config(self) -> dict | None:
-        try:
-            with open(MODELS_CONFIG_PATH, "r") as f:
-                return yaml.safe_load(f)
-
-        except FileNotFoundError:
-            print("File not found: Models Config File Does Not Exist")
-
-            return None
-
-    def load(self, path: str):
-
+        Args:
+            path: The path to the SLM model .gguf file.
+        """
         self.model = Llama(model_path=path)
 
         print("Model loaded succesfully")
 
     def unload(self) -> None:
         """
-        This function unloads the current running SLM by deleting the variable using 'del' keyword
-        and using garbage collector to clean up the memory. Then recreates the model variable for the next loading.
-
-        Returns: None
+        Unloads the currently loaded Llama model to free up memory.
         """
 
         if self.model:
-            self.model = None
+            del self.model
 
             gc.collect()
 
-            self.model = None
-
     def swap(self, path: str) -> None:
         """
-        Docstring for swap
+        Swaps the currently loaded SLM model with a new one from the given path.
 
-
-        :param self: Description
-        :param role: The role of the model being swapped
-        :type role: str
+        Args:
+            path: The path to the new Llama model.
         """
 
         self.unload()
 
         self.load(path=path)
 
-        def generate(
-            self, messages: List[ChatCompletionRequestMessage], temp: float
-        ) -> CreateChatCompletionResponse:
+    def generate(
+        self, messages: List[ChatCompletionRequestMessage], temp: float
+    ) -> CreateChatCompletionResponse | Iterator[CreateChatCompletionStreamResponse]:
+        """
+        Generates a chat completion response based on the given messages and temperature.
 
-            response = self.model.create_chat_completion(
-                messages=messages, temperature=temp
-            )
+        Args:
+            messages: A list of chat completion request messages.
+            temp: The temperature for the generation.
 
-            return response["choices"][0]["message"]["content"]
+        Returns:
+            A chat completion response or an iterator of stream responses.
+        """
 
+        response = self.model.create_chat_completion(
+            messages=messages, temperature=temp
+        )
 
-# UNIT TESTING
-
-# agent = AgentService()
-
-# agent.unload()
+        return response
