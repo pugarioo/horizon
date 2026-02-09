@@ -1,11 +1,9 @@
 import gc
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 import yaml
 from llama_cpp import Llama
 from llama_cpp.llama_types import (
-    ChatCompletion,
-    ChatCompletionRequestFunctionCall,
     ChatCompletionRequestMessage,
     CreateChatCompletionResponse,
 )
@@ -76,6 +74,6 @@ class AgentService:
 
 # UNIT TESTING
 
-agent = AgentService()
+# agent = AgentService()
 
-agent.unload()
+# agent.unload()
