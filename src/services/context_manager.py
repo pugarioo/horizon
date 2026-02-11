@@ -4,8 +4,12 @@ import uuid
 from typing import Any
 
 import chromadb
+from chromadb.api import ClientAPI
 from chromadb.api.models.CollectionCommon import QueryResult
 from chromadb.utils import embedding_functions
+from chromadb.utils.embedding_functions.sentence_transformer_embedding_function import (
+    SentenceTransformerEmbeddingFunction,
+)
 
 from src.paths import DB_DIR
 
@@ -17,9 +21,11 @@ class ContextManager:
         and an SQLite database for structured conversation and message storage.
         """
         # Initialize the vector database client
-        self.client = chromadb.PersistentClient(path=DB_DIR)
-        self.embedder = embedding_functions.SentenceTransformerEmbeddingFunction(
-            model_name="all-MiniLM-L6-v2"
+        self.client: ClientAPI = chromadb.PersistentClient(path=DB_DIR)
+        self.embedder: SentenceTransformerEmbeddingFunction = (
+            embedding_functions.SentenceTransformerEmbeddingFunction(
+                model_name="all-MiniLM-L6-v2"
+            )
         )
         self.collection = self.client.get_or_create_collection(
             name="chat_history",
@@ -27,8 +33,8 @@ class ContextManager:
         )
 
         # Initialize the SQLite database
-        self.db_conn = sqlite3.connect(DB_DIR / "chat_history.db")
-        self.db_cursor = self.db_conn.cursor()
+        self.db_conn: sqlite3.Connection = sqlite3.connect(DB_DIR / "chat_history.db")
+        self.db_cursor: sqlite3.Cursor = self.db_conn.cursor()
         self.db_cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS conversations (
@@ -106,7 +112,7 @@ class ContextManager:
         """
         formatted_query: list[str] = [query] if isinstance(query, str) else query
 
-        results = self.collection.query(
+        results: QueryResult = self.collection.query(
             query_texts=formatted_query,
             n_results=top_k,
             where={"conversation_id": conversation_id},
@@ -160,11 +166,8 @@ class ContextManager:
         Returns:
             A unique string identifier combining conversation_id, timestamp, and a UUID suffix.
         """
-        timestamp = int(time.time())
+        timestamp: int = int(time.time())
 
-        suffix = uuid.uuid4().hex[:4]
+        suffix: str = uuid.uuid4().hex[:4]
 
         return f"{conversation_id}-{timestamp}-{suffix}"
-
-
-context_manager = ContextManager()
