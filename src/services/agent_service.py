@@ -44,7 +44,7 @@ class AgentService:
         self.load(path=path)
 
     def generate(
-        self, messages: List[ChatCompletionRequestMessage], temp: float
+        self, messages: List[ChatCompletionRequestMessage], temp: float, stream: bool = False
     ) -> CreateChatCompletionResponse | Iterator[CreateChatCompletionStreamResponse]:
         """
         Generates a chat completion response based on the given messages and temperature.
@@ -52,13 +52,14 @@ class AgentService:
         Args:
             messages: A list of chat completion request messages.
             temp: The temperature for the generation.
+            stream: Whether to stream the response.
 
         Returns:
             A chat completion response or an iterator of stream responses.
         """
 
         response = self.model.create_chat_completion(
-            messages=messages, temperature=temp
+            messages=messages, temperature=temp, stream=stream
         )
 
         return response

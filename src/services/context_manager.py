@@ -12,6 +12,7 @@ from chromadb.utils.embedding_functions.sentence_transformer_embedding_function 
 )
 
 from src.paths import DB_DIR
+from src.services.utils import LogEntry
 
 
 class ContextManager:
@@ -20,6 +21,9 @@ class ContextManager:
         Initializes the ContextManager, setting up both a ChromaDB client for vector embeddings
         and an SQLite database for structured conversation and message storage.
         """
+        # Initialize Agent Logs
+        self.agent_logs: list[LogEntry] = []
+
         # Initialize the vector database client
         self.client: ClientAPI = chromadb.PersistentClient(path=DB_DIR)
         self.embedder: SentenceTransformerEmbeddingFunction = (
