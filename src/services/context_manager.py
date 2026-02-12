@@ -1,7 +1,7 @@
 import sqlite3
 import time
 import uuid
-from typing import Any
+from typing import Any, cast
 
 import chromadb
 from chromadb.api import ClientAPI
@@ -99,9 +99,7 @@ class ContextManager:
         )
         self.db_conn.commit()
 
-    def search_context(
-        self, conversation_id: str, query: str | list[str], top_k: int = 3
-    ) -> QueryResult:
+    def search_context(self, conversation_id: str, query: str, top_k: int = 3) -> str:
         """
         Searches the ChromaDB vector collection for context relevant to a given query
         within a specific conversation.
@@ -114,7 +112,7 @@ class ContextManager:
         Returns:
             A QueryResult object containing the search results.
         """
-        formatted_query: list[str] = [query] if isinstance(query, str) else query
+        formatted_query: list[str] = [query]
 
         results: QueryResult = self.collection.query(
             query_texts=formatted_query,
@@ -122,7 +120,18 @@ class ContextManager:
             where={"conversation_id": conversation_id},
         )
 
-        return results
+        result_dict = cast(dict[str, Any], results)
+
+        raw_docs = result_dict.get("documents", [[]])[0]
+
+        if not raw_docs:
+            return ""
+
+        unique_docs: list[str] = list(dict.fromkeys(raw_docs))
+
+        formatted_docs = [f"-{doc}" for doc in unique_docs]
+
+        return "\n".join(formatted_docs)
 
     def get_conversations(self) -> list[Any]:
         """
@@ -175,3 +184,6 @@ class ContextManager:
         suffix: str = uuid.uuid4().hex[:4]
 
         return f"{conversation_id}-{timestamp}-{suffix}"
+
+    def add_agent_log(self, log: LogEntry) -> None:
+        self.agent_logs.append(log)
