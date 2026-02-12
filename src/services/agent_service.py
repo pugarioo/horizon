@@ -1,5 +1,5 @@
 import gc
-from typing import List
+from typing import List, Literal, overload
 
 from llama_cpp import Iterator, Llama
 from llama_cpp.llama_types import (
@@ -43,8 +43,27 @@ class AgentService:
 
         self.load(path=path)
 
+    @overload
     def generate(
-        self, messages: List[ChatCompletionRequestMessage], temp: float, stream: bool = False
+        self,
+        messages: List[ChatCompletionRequestMessage],
+        temp: float,
+        stream: Literal[False] = False,
+    ) -> CreateChatCompletionResponse: ...
+
+    @overload
+    def generate(
+        self,
+        messages: List[ChatCompletionRequestMessage],
+        temp: float,
+        stream: Literal[True],
+    ) -> Iterator[CreateChatCompletionStreamResponse]: ...
+
+    def generate(
+        self,
+        messages: List[ChatCompletionRequestMessage],
+        temp: float,
+        stream: bool = False,
     ) -> CreateChatCompletionResponse | Iterator[CreateChatCompletionStreamResponse]:
         """
         Generates a chat completion response based on the given messages and temperature.
