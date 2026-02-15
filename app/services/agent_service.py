@@ -10,6 +10,13 @@ from llama_cpp.llama_types import (
 
 
 class AgentService:
+    """
+    Handles the lifecycle and operations of the Small Language Models (LLM).
+
+    This service provides methods to load, unload, and swap GGUF models using llama-cpp-python,
+    as well as generating chat completions with optional streaming.
+    """
+
     def load(self, path: str) -> None:
         """
         Loads am SLM model from the given path.

@@ -1,8 +1,6 @@
 agents:
   # 1. The Generator (Creative/Drafting)
   generator:
-    role_name: "Architect"
-    model_filename: "llama_engine.gguf" # Uses a general purpose model
     temperature: 0.6
     system_prompt: |
       You are a creative solutions architect.
@@ -11,8 +9,6 @@ agents:
 
   # 2. The Critic (Analytical/Negative)
   critic:
-    role_name: "Reviewer"
-    model_filename: "deepseek_engine.gguf" # Uses a logic-heavy model
     temperature: 0.1
     system_prompt: |
       You are a strict technical reviewer.
@@ -25,8 +21,6 @@ agents:
 
   # 3. The Judge (Synthesis/Decision)
   judge:
-    role_name: "Arbiter"
-    model_filename: "qwen_engine.gguf" # Uses a strong instruction-following model
     temperature: 0.0
     system_prompt: |
       You are the final arbiter.
@@ -37,3 +31,9 @@ agents:
 
       If the Critique is minor or "PASSED":
       - Output the Original Solution as the final answer.
+
+models:
+  file_name:
+    llama: llama_engine.gguf
+    qwen: qwen_engine.gguf
+    deepseek: deepseek_engine.gguf

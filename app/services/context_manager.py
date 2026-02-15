@@ -187,3 +187,4 @@ class ContextManager:
 
     def add_agent_log(self, log: LogEntry) -> None:
         self.agent_logs.append(log)
+
