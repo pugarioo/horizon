@@ -1,3 +1,4 @@
+import re
 import uuid
 from typing import List
 
@@ -10,7 +11,7 @@ from llama_cpp.llama_types import (
     CreateChatCompletionStreamResponse,
 )
 
-import src.paths
+from src.paths import MODELS_CONFIG_PATH
 from src.services.agent_service import AgentService
 from src.services.context_manager import ContextManager
 from src.services.websocket_manager import WebSocketManager
@@ -23,13 +24,10 @@ class Orchestrator:
         self.websocket_manager: WebSocketManager = WebSocketManager()
 
         try:
-            with open(src.paths.MODELS_CONFIG_PATH, "r") as file:
+            with open(MODELS_CONFIG_PATH, "r") as file:
                 self.model_config: dict = yaml.safe_load(file)
         except yaml.YAMLError as e:
             print(f"Error loading models config: {e}")
-
-    def generate_conversation_id(self):
-        return str(uuid.uuid4())
 
     def execute_orchestration(
         self, user_prompt: str, conversation_id: str, websocket: WebSocket
@@ -37,12 +35,48 @@ class Orchestrator:
         pass
 
     def _generate_critique(
-        self, user_prompt: str, refined_answer: str | None = None
-    ) -> CreateChatCompletionResponse: ...
+        self, user_prompt: str, answer: str | None = None
+    ) -> CreateChatCompletionResponse:
+        content: str = f"UserPrompt:{user_prompt}\n ToReview:{answer}"
+
+        response: CreateChatCompletionResponse = self.agent_service.generate(
+            messages=[
+                {
+                    "role": "system",
+                    "content": self.model_config["agents"]["critic"]["model"],
+                },
+                {"role": "user", "content": content},
+            ],
+            temp=self.model_config["agents"]["critic"]["temperature"],
+            stream=False,
+        )
+
+        return response
 
     def _evaluate_and_synthesize(
-        self, candiate_solution_a: str, candidate_solution_b: str
-    ) -> Iterator[CreateChatCompletionStreamResponse]: ...
+        self,
+        user_prompt: str,
+        candidate_solution_a: str,
+        candidate_solution_b: str,
+    ) -> Iterator[CreateChatCompletionStreamResponse]:
+
+        content: str = f"UserPrompt:{user_prompt}\n SolutionA:{candidate_solution_a}\n SolutionB:{candidate_solution_b}"
+
+        response: Iterator[CreateChatCompletionStreamResponse] = (
+            self.agent_service.generate(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": self.model_config["agents"]["judge"]["model"],
+                    },
+                    {"role": "user", "content": content},
+                ],
+                temp=self.model_config["agents"]["judge"]["temperature"],
+                stream=True,
+            )
+        )
+
+        return response
 
     def _generate_initial_response(
         self, conversation_id: str, user_prompt: str
@@ -74,7 +108,7 @@ class Orchestrator:
         user_prompt: str | None = None,
         previouse_response: str | None = None,
         refinement_request: str | None = None,
-    ) -> Iterator[CreateChatCompletionStreamResponse]:
+    ) -> CreateChatCompletionResponse:
 
         content = f"UserPrompt:{user_prompt}\n PreviousResponse:{previouse_response}\n Task:{refinement_request}"
 
@@ -89,7 +123,17 @@ class Orchestrator:
         response = self.agent_service.generate(
             messages=query,
             temp=self.model_config["agents"]["generator"]["temperature"],
-            stream=True,
+            stream=False,
         )
 
         return response
+
+    def generate_conversation_id(self):
+        return str(uuid.uuid4())
+
+    def contains_refinement_request(self, text: str) -> bool:
+        pattern: str = r"\[\s*RR\s*\]"
+
+        if re.search(pattern, text, re.IGNORECASE):
+            return True
+        return False
