@@ -22,24 +22,24 @@ class ContextManager:
         and an SQLite database for structured conversation and message storage.
         """
         # Initialize Agent Logs
-        self.agent_logs: list[LogEntry] = []
+        self._agent_logs: list[LogEntry] = []
 
         # Initialize the vector database client
-        self.client: ClientAPI = chromadb.PersistentClient(path=DB_DIR)
-        self.embedder: SentenceTransformerEmbeddingFunction = (
+        self._client: ClientAPI = chromadb.PersistentClient(path=DB_DIR)
+        self._embedder: SentenceTransformerEmbeddingFunction = (
             embedding_functions.SentenceTransformerEmbeddingFunction(
                 model_name="all-MiniLM-L6-v2"
             )
         )
-        self.collection = self.client.get_or_create_collection(
+        self._collection = self._client.get_or_create_collection(
             name="chat_history",
             embedding_function=self.embedder,  # type: ignore
         )
 
         # Initialize the SQLite database
-        self.db_conn: sqlite3.Connection = sqlite3.connect(DB_DIR / "chat_history.db")
-        self.db_cursor: sqlite3.Cursor = self.db_conn.cursor()
-        self.db_cursor.execute(
+        self._db_conn: sqlite3.Connection = sqlite3.connect(DB_DIR / "chat_history.db")
+        self._db_cursor: sqlite3.Cursor = self._db_conn.cursor()
+        self._db_cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS conversations (
                 id TEXT PRIMARY KEY,
@@ -49,18 +49,18 @@ class ContextManager:
             )
             """
         )
-        self.db_cursor.execute(
+        self._db_cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS chat_messages (
                 id TEXT PRIMARY KEY,
-                conversation_id int,
+                conversation_id TEXT,
                 content TEXT,
                 FOREIGN KEY(conversation_id) REFERENCES conversations(id)
             )
             """
         )
 
-        self.db_conn.commit()
+        self._db_conn.commit()
 
     def store_memory(self, conversation_id: str, content: str | list[str]) -> None:
         """
@@ -75,7 +75,7 @@ class ContextManager:
             [content] if isinstance(content, str) else content
         )
 
-        self.collection.add(
+        self._collection.add(
             documents=formatted_content,
             ids=[
                 self._generate_id(conversation_id=conversation_id)
@@ -86,7 +86,7 @@ class ContextManager:
             ],
         )
 
-        self.db_cursor.execute(
+        self._db_cursor.execute(
             """
             INSERT INTO chat_messages (id, conversation_id, content)
             VALUES (?, ?, ?)
@@ -97,7 +97,7 @@ class ContextManager:
                 formatted_content[0],
             ),
         )
-        self.db_conn.commit()
+        self._db_conn.commit()
 
     def search_context(self, conversation_id: str, query: str, top_k: int = 3) -> str:
         """
@@ -114,7 +114,7 @@ class ContextManager:
         """
         formatted_query: list[str] = [query]
 
-        results: QueryResult = self.collection.query(
+        results: QueryResult = self._collection.query(
             query_texts=formatted_query,
             n_results=top_k,
             where={"conversation_id": conversation_id},
@@ -140,13 +140,13 @@ class ContextManager:
         Returns:
             A list of tuples, each representing a conversation's (id, conversation_id, name, timestamp).
         """
-        self.db_cursor.execute(
+        self._db_cursor.execute(
             """
             SELECT id, conversation_id, name, timestamp
             FROM conversations
             """
         )
-        return self.db_cursor.fetchall()
+        return self._db_cursor.fetchall()
 
     def get_conversation_messages(self, conversation_id: str) -> list[Any]:
         """
@@ -158,7 +158,7 @@ class ContextManager:
         Returns:
             A list of tuples, each representing a message's (id, content, timestamp).
         """
-        self.db_cursor.execute(
+        self._db_cursor.execute(
             """
             SELECT id, content, timestamp
             FROM chat_messages
@@ -167,7 +167,7 @@ class ContextManager:
             """,
             (conversation_id,),
         )
-        return self.db_cursor.fetchall()
+        return self._db_cursor.fetchall()
 
     def _generate_id(self, conversation_id: str) -> str:
         """
@@ -186,5 +186,4 @@ class ContextManager:
         return f"{conversation_id}-{timestamp}-{suffix}"
 
     def add_agent_log(self, log: LogEntry) -> None:
-        self.agent_logs.append(log)
-
+        self._agent_logs.append(log)

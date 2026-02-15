@@ -1,4 +1,7 @@
 from enum import Enum
+from typing import Dict
+
+from referencing.typing import D
 
 
 class State(Enum):
@@ -31,7 +34,9 @@ class LogEntry:
     Represents a single log entry for agent interactions.
     """
 
-    def __init__(self, role: Roles, message: str):
+    def __init__(
+        self, role: Roles, message: str, token_usage: Dict[str, int], duration: float
+    ):
         """
         Initializes a LogEntry.
 
@@ -41,3 +46,9 @@ class LogEntry:
         """
         self.role = role
         self.message = message
+        self.token_usage = token_usage or {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+        }
+        self.duration = duration
