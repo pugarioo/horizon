@@ -53,212 +53,119 @@ class Orchestrator:
             conversation_id: The unique identifier for the conversation.
             websocket: The active WebSocket connection for real-time communication.
         """
+        from app.paths import MODELS_DIR
 
+        # 1. Initial Generation - Model A (Llama)
         self.agent_service.load(
-            path=f"{MODELS_CONFIG_PATH}/{self.model_config['models']['file_name']['llama']}"
+            path=str(MODELS_DIR / self.model_config["models"]["file_name"]["llama"])
         )
 
-        start_time: float = time.time()
-
-        init_completion_a: CreateChatCompletionResponse = (
-            self._generate_initial_response(
-                conversation_id=conversation_id, user_prompt=user_prompt
-            )
+        init_completion_a = self._run_step(
+            Roles.GENERATOR_A,
+            self._generate_initial_response,
+            conversation_id,
+            user_prompt,
         )
-        candidate_sol_a: CreateChatCompletionResponse = init_completion_a
+        candidate_sol_a = init_completion_a
 
-        duration: float = time.time() - start_time
-
-        self.context_manager.add_agent_log(
-            LogEntry(
-                role=Roles.GENERATOR_A,
-                content=init_completion_a["choices"][0]["message"]["content"],
-                token_usage=init_completion_a["usage"],
-                duration=duration,
-            )
-        )
-
+        # 2. Initial Generation - Model B (Qwen)
         self.agent_service.swap(
-            path=f"{MODELS_CONFIG_PATH}/{self.model_config['models']['file_name']['qwen']}"
+            path=str(MODELS_DIR / self.model_config["models"]["file_name"]["qwen"])
         )
 
-        start_time = time.time()
-
-        init_completion_b: CreateChatCompletionResponse = (
-            self._generate_initial_response(conversation_id, user_prompt)
+        init_completion_b = self._run_step(
+            Roles.GENERATOR_B,
+            self._generate_initial_response,
+            conversation_id,
+            user_prompt,
         )
-        candidate_sol_b: CreateChatCompletionResponse = init_completion_b
+        candidate_sol_b = init_completion_b
 
-        duration = time.time() - start_time
-
-        self.context_manager.add_agent_log(
-            LogEntry(
-                role=Roles.GENERATOR_B,
-                content=init_completion_b["choices"][0]["message"]["content"],
-                token_usage=init_completion_b["usage"],
-                duration=duration,
-            )
+        # 3. Critique Solution A (using Qwen)
+        critique_a = self._run_step(
+            Roles.CRITIC_A,
+            self._generate_critique,
+            user_prompt,
+            self._get_text(init_completion_a),
         )
 
-        start_time = time.time()
-
-        critique_a: CreateChatCompletionResponse = self._generate_critique(
-            user_prompt=user_prompt,
-            answer=init_completion_a["choices"][0]["message"]["content"],
-        )
-
-        duration = time.time() - start_time
-
-        self.context_manager.add_agent_log(
-            LogEntry(
-                role=Roles.CRITIC,
-                content=critique_a["choices"][0]["message"]["content"],
-                token_usage=critique_a["usage"],
-                duration=duration,
-            )
-        )
-
+        # 4. Refinement Solution A (Swap back to Llama)
         self.agent_service.swap(
-            path=f"{MODELS_CONFIG_PATH}/{self.model_config['models']['file_name']['llama']}"
+            path=str(MODELS_DIR / self.model_config["models"]["file_name"]["llama"])
         )
 
-        refined_content_a: str | None = None
-        if self.contains_refinement_request(
-            text=critique_a["choices"][0]["message"]["content"]
-        ):
-            start_time = time.time()
-
-            refined_completion_a: CreateChatCompletionResponse = (
-                self._generate_refined_response(
-                    user_prompt=user_prompt,
-                    previous_response=init_completion_a["choices"][0]["message"][
-                        "content"
-                    ],
-                    refinement_request=critique_a["choices"][0]["message"]["content"],
-                )
+        refined_content_a = None
+        if self.contains_refinement_request(text=self._get_text(critique_a)):
+            refined_completion_a = self._run_step(
+                Roles.GENERATOR_A,
+                self._generate_refined_response,
+                user_prompt,
+                self._get_text(init_completion_a),
+                self._get_text(critique_a),
             )
+            refined_content_a = self._get_text(refined_completion_a)
 
-            refined_content_a = refined_completion_a["choices"][0]["message"]["content"]
-
-            duration = time.time() - start_time
-
-            self.context_manager.add_agent_log(
-                LogEntry(
-                    role=Roles.GENERATOR_A,
-                    content=refined_content_a,
-                    token_usage=refined_completion_a["usage"],
-                    duration=duration,
-                )
-            )
-
-        start_time = time.time()
-
-        critique_b: CreateChatCompletionResponse = self._generate_critique(
-            user_prompt=user_prompt,
-            answer=init_completion_b["choices"][0]["message"]["content"],
+        # 5. Critique Solution B (using Llama)
+        critique_b = self._run_step(
+            Roles.CRITIC_B,
+            self._generate_critique,
+            user_prompt,
+            self._get_text(init_completion_b),
         )
 
-        duration = time.time() - start_time
-
-        self.context_manager.add_agent_log(
-            LogEntry(
-                role=Roles.CRITIC_B,
-                content=critique_b["choices"][0]["message"]["content"],
-                token_usage=critique_b["usage"],
-                duration=duration,
-            )
-        )
-
+        # 6. Refinement Solution B (Swap to Qwen)
         self.agent_service.swap(
-            path=f"{MODELS_CONFIG_PATH}/{self.model_config['models']['file_name']['qwen']}"
+            path=str(MODELS_DIR / self.model_config["models"]["file_name"]["qwen"])
         )
 
-        refined_content_b: str | None = None
-
-        if self.contains_refinement_request(
-            text=critique_b["choices"][0]["message"]["content"]
-        ):
-            start_time = time.time()
-
-            refined_completion_b: CreateChatCompletionResponse = (
-                self._generate_refined_response(
-                    user_prompt=user_prompt,
-                    previous_response=init_completion_b["choices"][0]["message"][
-                        "content"
-                    ],
-                    refinement_request=critique_b["choices"][0]["message"]["content"],
-                )
+        refined_content_b = None
+        if self.contains_refinement_request(text=self._get_text(critique_b)):
+            refined_completion_b = self._run_step(
+                Roles.GENERATOR_B,
+                self._generate_refined_response,
+                user_prompt,
+                self._get_text(init_completion_b),
+                self._get_text(critique_b),
             )
+            refined_content_b = self._get_text(refined_completion_b)
 
-            refined_content_b = refined_completion_b["choices"][0]["message"]["content"]
-
-            duration = time.time() - start_time
-
-            self.context_manager.add_agent_log(
-                LogEntry(
-                    role=Roles.GENERATOR_B,
-                    content=refined_content_b,
-                    token_usage=refined_completion_b["usage"],
-                    duration=duration,
-                )
-            )
-
+        # 7. Finalize Candidate Solution A (using Qwen)
         if refined_content_a:
-            start_time = time.time()
-
-            candidate_sol_a = self._finalize_candidate_solution(
-                user_prompt=user_prompt,
-                initial_answer=init_completion_a["choices"][0]["message"]["content"],
-                refined_answer=refined_content_a,
-                refinement_request=critique_a["choices"][0]["message"]["content"],
+            final_sol_a_completion = self._run_step(
+                Roles.CRITIC_A,
+                self._finalize_candidate_solution,
+                user_prompt,
+                self._get_text(init_completion_a),
+                refined_content_a,
+                self._get_text(critique_a),
             )
+            candidate_sol_a = final_sol_a_completion
 
-            duration = time.time() - start_time
-
-            self.context_manager.add_agent_log(
-                LogEntry(
-                    role=Roles.CRITIC_A,
-                    content=candidate_sol_a["choices"][0]["message"]["content"],
-                    token_usage=candidate_sol_a["usage"],
-                    duration=duration,
-                )
-            )
+        # 8. Finalize Candidate Solution B (Swap to Llama)
         if refined_content_b:
             self.agent_service.swap(
-                f"{MODELS_CONFIG_PATH}/{self.model_config['models']['file_name']['llama']}"
+                path=str(MODELS_DIR / self.model_config["models"]["file_name"]["llama"])
             )
-
-            start_time = time.time()
-
-            candidate_sol_b = self._finalize_candidate_solution(
-                user_prompt=user_prompt,
-                initial_answer=init_completion_b["choices"][0]["message"]["content"],
-                refined_answer=refined_content_b,
-                refinement_request=critique_b["choices"][0]["message"]["content"],
+            final_sol_b_completion = self._run_step(
+                Roles.CRITIC_B,
+                self._finalize_candidate_solution,
+                user_prompt,
+                self._get_text(init_completion_b),
+                refined_content_b,
+                self._get_text(critique_b),
             )
+            candidate_sol_b = final_sol_b_completion
 
-            duration = time.time() - start_time
-
-            self.context_manager.add_agent_log(
-                LogEntry(
-                    role=Roles.CRITIC_B,
-                    content=candidate_sol_b["choices"][0]["message"]["content"],
-                    token_usage=candidate_sol_b["usage"],
-                    duration=duration,
-                )
-            )
+        # 9. Final Synthesis - Judge (DeepSeek)
         self.agent_service.swap(
-            path=f"{MODELS_CONFIG_PATH}/{self.model_config['models']['file_name']['deepseek']}"
+            path=str(MODELS_DIR / self.model_config["models"]["file_name"]["deepseek"])
         )
-
-        final_a: str = candidate_sol_a["choices"][0]["message"]["content"]
-        final_b: str = candidate_sol_b["choices"][0]["message"]["content"]
 
         final_response: Iterator[CreateChatCompletionStreamResponse] = (
             self._evaluate_and_synthesize(
                 user_prompt=user_prompt,
-                candidate_solution_a=final_a,
-                candidate_solution_b=final_b,
+                candidate_solution_a=self._get_text(candidate_sol_a),
+                candidate_solution_b=self._get_text(candidate_sol_b),
             )
         )
 
@@ -448,9 +355,21 @@ class Orchestrator:
             return True
         return False
 
+    def _get_text(self, response: CreateChatCompletionResponse) -> str:
+        return response["choices"][0]["message"]["content"]
 
-def _get_text(self, response: CreateChatCompletionResponse) -> str:
-    return response["choices"][0]["message"]["content"]
+    def _run_step(self, role: Roles, func, *args) -> CreateChatCompletionResponse:
+        start_time: float = time.time()
+        response = func(*args)
+        duration: float = time.time() - start_time
 
-# def _run_step(self, role: Roles, func, *args) -> None:
-#     start_time
+        self.context_manager.add_agent_log(
+            LogEntry(
+                role=role,
+                content=self._get_text(response),
+                token_usage=response["usage"],
+                duration=duration,
+            )
+        )
+
+        return response
