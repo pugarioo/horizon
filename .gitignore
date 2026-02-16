@@ -4,9 +4,9 @@ db/
 
 !models/model_config.yaml
 
-src/__pycache__/*
+app/__pycache__/*
 
-src/services/__pycache__/*
+app/services/__pycache__/*
 
 .idea
 

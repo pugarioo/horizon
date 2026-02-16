@@ -42,7 +42,7 @@ class Orchestrator:
         except yaml.YAMLError as e:
             print(f"Error loading models config: {e}")
 
-    def execute_orchestration(
+    async def execute_orchestration(
         self, user_prompt: str, conversation_id: str, websocket: WebSocket
     ) -> None:
         """
@@ -356,7 +356,7 @@ class Orchestrator:
         return False
 
     def _get_text(self, response: CreateChatCompletionResponse) -> str:
-        return response["choices"][0]["message"]["content"]
+        return response["choices"][0]["message"]["content"]  # type: ignore
 
     def _run_step(self, role: Roles, func, *args) -> CreateChatCompletionResponse:
         start_time: float = time.time()
@@ -366,10 +366,13 @@ class Orchestrator:
         self.context_manager.add_agent_log(
             LogEntry(
                 role=role,
-                content=self._get_text(response),
+                message=self._get_text(response),
                 token_usage=response["usage"],
                 duration=duration,
             )
         )
+
+        print(role)
+        print(self._get_text(response=response))
 
         return response
