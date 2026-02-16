@@ -33,7 +33,7 @@ class ContextManager:
         )
         self._collection = self._client.get_or_create_collection(
             name="chat_history",
-            embedding_function=self.embedder,  # type: ignore
+            embedding_function=self._embedder,  # type: ignore
         )
 
         # Initialize the SQLite database

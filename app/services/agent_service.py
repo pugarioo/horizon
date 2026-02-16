@@ -24,7 +24,9 @@ class AgentService:
         Args:
             path: The path to the SLM model .gguf file.
         """
-        self.model: Llama = Llama(model_path=path, n_gpu_layers=50, n_ctx=4096)
+        self.model: Llama = Llama(
+            model_path=path, n_gpu_layers=50, n_ctx=4096, verbose=False
+        )
 
         print("Model loaded succesfully")
 

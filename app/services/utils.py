@@ -1,20 +1,18 @@
 from enum import Enum
 from typing import Dict
 
-from referencing.typing import D
-
 
 class State(Enum):
     """
     Represents the various states the LLM engine can be in.
     """
 
-    IDLE: str = "IDLE"
-    LOADING_MODEL: str = "LOADING_MODEL"
-    SWAPPING_MODEL: str = "SWAPPING_MODEL"
-    LOADED: str = "LOADED"
-    GENERATING: str = "GENERATING"
-    ERROR: str = "ERROR"
+    IDLE = "IDLE"
+    LOADING_MODEL = "LOADING_MODEL"
+    SWAPPING_MODEL = "SWAPPING_MODEL"
+    LOADED = "LOADED"
+    GENERATING = "GENERATING"
+    ERROR = "ERROR"
 
 
 class Roles(Enum):
@@ -22,11 +20,11 @@ class Roles(Enum):
     Defines the specialized roles for different agent instances.
     """
 
-    GENERATOR_A: str = "GENERATOR_A"
-    GENERATOR_B: str = "GENERATOR_B"
-    CRITIC_A: str = "CRITIC_A"
-    CRITIC_B: str = "CRITIC_B"
-    JUDGE: str = "JUDGE"
+    GENERATOR_A = "GENERATOR_A"
+    GENERATOR_B = "GENERATOR_B"
+    CRITIC_A = "CRITIC_A"
+    CRITIC_B = "CRITIC_B"
+    JUDGE = "JUDGE"
 
 
 class LogEntry:
