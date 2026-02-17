@@ -55,6 +55,7 @@ class ContextManager:
                 id TEXT PRIMARY KEY,
                 conversation_id TEXT,
                 content TEXT,
+                timestamp INTEGER,
                 FOREIGN KEY(conversation_id) REFERENCES conversations(id)
             )
             """
@@ -79,22 +80,24 @@ class ContextManager:
             documents=formatted_content,
             ids=[
                 self._generate_id(conversation_id=conversation_id)
-                for _ in range(len(content))
+                for _ in range(len(formatted_content))
             ],
             metadatas=[
-                {"conversation_id": conversation_id} for _ in range(len(content))
+                {"conversation_id": conversation_id}
+                for _ in range(len(formatted_content))
             ],
         )
 
         self._db_cursor.execute(
             """
-            INSERT INTO chat_messages (id, conversation_id, content)
-            VALUES (?, ?, ?)
+            INSERT INTO chat_messages (id, conversation_id, content, timestamp)
+            VALUES (?, ?, ?, ?)
             """,
             (
                 self._generate_id(conversation_id=conversation_id),
                 conversation_id,
                 formatted_content[0],
+                int(time.time()),
             ),
         )
         self._db_conn.commit()
