@@ -1,12 +1,19 @@
-from click.core import F
 from fastapi import FastAPI, WebSocket
 
+from app.services.agent_service import AgentService
 from app.services.context_manager import ContextManager
 from app.services.orchestrator import Orchestrator
+from app.services.websocket_manager import WebSocketManager
 
 app: FastAPI = FastAPI()
+
+agent_service: AgentService = AgentService()
 context_manager: ContextManager = ContextManager()
-orchestrator: Orchestrator = Orchestrator(context_manager)
+websocket_manager: WebSocketManager = WebSocketManager()
+
+orchestrator: Orchestrator = Orchestrator(
+    agent_service, context_manager, websocket_manager
+)
 
 
 @app.websocket("/ws")

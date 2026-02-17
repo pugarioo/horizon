@@ -28,13 +28,18 @@ class Orchestrator:
     the synthesis of responses.
     """
 
-    def __init__(self, context_manager: ContextManager):
+    def __init__(
+        self,
+        agent_service: AgentService,
+        context_manager: ContextManager,
+        websocket_manager: WebSocketManager,
+    ):
         """
         Initializes the Orchestrator with necessary services and configurations.
         """
-        self.agent_service: AgentService = AgentService()
+        self.agent_service: AgentService = agent_service
         self.context_manager: ContextManager = context_manager
-        self.websocket_manager: WebSocketManager = WebSocketManager()
+        self.websocket_manager: WebSocketManager = websocket_manager
 
         try:
             with open(MODELS_CONFIG_PATH, "r") as file:
