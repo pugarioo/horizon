@@ -12,7 +12,9 @@ context_manager: ContextManager = ContextManager()
 websocket_manager: WebSocketManager = WebSocketManager()
 
 orchestrator: Orchestrator = Orchestrator(
-    agent_service, context_manager, websocket_manager
+    agent_service=agent_service,
+    context_manager=context_manager,
+    websocket_manager=websocket_manager,
 )
 
 
