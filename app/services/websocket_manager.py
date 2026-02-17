@@ -1,17 +1,21 @@
 from fastapi import WebSocket
+from llama_cpp import CreateChatCompletionStreamResponse, Iterator
+
+from app.services.utils import Roles, State
 
 
 class WebSocketManager:
     """
     Manages active WebSocket connections for real-time communication.
     """
-    def __init__(self):
+
+    def __init__(self) -> None:
         """
         Initializes the WebSocketManager with an empty dictionary of active connections.
         """
         self.active_connections: dict[str, WebSocket] = {}
 
-    async def connect(self, conversation_id: str, websocket: WebSocket):
+    async def connect(self, conversation_id: str, websocket: WebSocket) -> None:
         """
         Accepts a new WebSocket connection and registers it with a conversation ID.
 
@@ -33,9 +37,11 @@ class WebSocketManager:
         await self.active_connections[conversation_id].close()
         del self.active_connections[conversation_id]
 
-    async def send_message(
-        self, conversation_id: str, websocket: WebSocket, content: str
-    ):
+    async def send_stream_response(
+        self,
+        websocket: WebSocket,
+        stream: Iterator[CreateChatCompletionStreamResponse],
+    ) -> None:
         """
         Sends a text message through an active WebSocket connection.
 
@@ -44,4 +50,45 @@ class WebSocketManager:
             websocket: The WebSocket instance to send the message through.
             content: The string content of the message.
         """
-        await websocket.send_text(content)
+
+        for chunk in stream:
+            delta = chunk["choices"][0]["delta"]
+
+            if "content" in delta:
+                token: dict = {"type": "token", "content": delta["content"]}
+
+                await self.send_message(websocket=websocket, content=token)
+
+    async def send_status(
+        self, websocket: WebSocket, status: State, agent: Roles | None = None
+    ) -> None:
+        """
+        Sends an event through an active WebSocket connection.
+
+        Args:
+            conversation_id: The ID of the conversation (for identification).
+            websocket: The WebSocket instance to send the event through.
+            event: The event data to send.
+        """
+        message: dict = {
+            "type": "status",
+            "status": status.value,
+            "agent": agent.value,
+        }
+
+        await self.send_message(websocket=websocket, content=message)
+
+    async def send_message(
+        self,
+        websocket: WebSocket,
+        content: dict,
+    ) -> None:
+        """
+        Sends a text message through an active WebSocket connection.
+
+        Args:
+            websocket: The WebSocket instance to send the message through.
+            content: The dictionary content of the message.
+        """
+
+        await self.send_message(websocket=websocket, content=content)
