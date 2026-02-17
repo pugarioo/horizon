@@ -1,5 +1,12 @@
+from typing import Any
+
 from fastapi import WebSocket
-from llama_cpp import CreateChatCompletionStreamResponse, Iterator
+from llama_cpp import (
+    ChatCompletionStreamResponseDelta,
+    ChatCompletionStreamResponseDeltaEmpty,
+    CreateChatCompletionStreamResponse,
+    Iterator,
+)
 
 from app.services.utils import Roles, State
 
@@ -52,15 +59,20 @@ class WebSocketManager:
         """
 
         for chunk in stream:
-            delta = chunk["choices"][0]["delta"]
+            delta: (
+                ChatCompletionStreamResponseDelta
+                | ChatCompletionStreamResponseDeltaEmpty
+            ) = chunk["choices"][0]["delta"]
 
-            if "content" in delta:
-                token: dict = {"type": "token", "content": delta["content"]}
+            content: Any | None = getattr(delta, "content", None)
+
+            if content:
+                token: dict = {"type": "token", "content": content}
 
                 await self.send_message(websocket=websocket, content=token)
 
     async def send_status(
-        self, websocket: WebSocket, status: State, agent: Roles | None = None
+        self, websocket: WebSocket, status: State, agent: Roles | None
     ) -> None:
         """
         Sends an event through an active WebSocket connection.
@@ -73,7 +85,7 @@ class WebSocketManager:
         message: dict = {
             "type": "status",
             "status": status.value,
-            "agent": agent.value,
+            "agent": agent.value if agent else None,
         }
 
         await self.send_message(websocket=websocket, content=message)

@@ -28,12 +28,12 @@ class Orchestrator:
     the synthesis of responses.
     """
 
-    def __init__(self):
+    def __init__(self, context_manager: ContextManager):
         """
         Initializes the Orchestrator with necessary services and configurations.
         """
         self.agent_service: AgentService = AgentService()
-        self.context_manager: ContextManager = ContextManager()
+        self.context_manager: ContextManager = context_manager
         self.websocket_manager: WebSocketManager = WebSocketManager()
 
         try:
