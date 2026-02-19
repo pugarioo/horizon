@@ -9,7 +9,7 @@
 # Initialize Conda for this script session
 eval "$(conda shell.bash hook)"
 
-ENV_NAME="test_env"
+ENV_NAME="horizon_env"
 
 echo "🚀 [1/3] Creating Environment & Installing Compilers..."
 # Your cleaner one-liner (added 'pip' just to be safe)
