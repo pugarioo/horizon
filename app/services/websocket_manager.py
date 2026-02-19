@@ -1,12 +1,4 @@
-from typing import Any
-
 from fastapi import WebSocket
-from llama_cpp import (
-    ChatCompletionStreamResponseDelta,
-    ChatCompletionStreamResponseDeltaEmpty,
-    CreateChatCompletionStreamResponse,
-    Iterator,
-)
 
 from app.services.utils import Roles, State
 
@@ -22,7 +14,7 @@ class WebSocketManager:
         """
         self.active_connections: dict[str, WebSocket] = {}
 
-    async def connect(self, conversation_id: str, websocket: WebSocket) -> None:
+    async def connect(self, websocket: WebSocket) -> None:
         """
         Accepts a new WebSocket connection and registers it with a conversation ID.
 
@@ -30,7 +22,7 @@ class WebSocketManager:
             conversation_id: The ID of the conversation associated with this connection.
             websocket: The WebSocket instance to connect.
         """
-        self.active_connections[conversation_id] = websocket
+        # self.active_connections[conversation_id] = websocket
 
         await websocket.accept()
 
@@ -43,33 +35,6 @@ class WebSocketManager:
         """
         await self.active_connections[conversation_id].close()
         del self.active_connections[conversation_id]
-
-    async def send_stream_response(
-        self,
-        websocket: WebSocket,
-        stream: Iterator[CreateChatCompletionStreamResponse],
-    ) -> None:
-        """
-        Sends a text message through an active WebSocket connection.
-
-        Args:
-            conversation_id: The ID of the conversation (for identification).
-            websocket: The WebSocket instance to send the message through.
-            content: The string content of the message.
-        """
-
-        for chunk in stream:
-            delta: (
-                ChatCompletionStreamResponseDelta
-                | ChatCompletionStreamResponseDeltaEmpty
-            ) = chunk["choices"][0]["delta"]
-
-            content: Any | None = getattr(delta, "content", None)
-
-            if content:
-                token: dict = {"type": "token", "content": content}
-
-                await self.send_message(websocket=websocket, content=token)
 
     async def send_status(
         self, websocket: WebSocket, status: State, agent: Roles | None
@@ -103,4 +68,4 @@ class WebSocketManager:
             content: The dictionary content of the message.
         """
 
-        await self.send_message(websocket=websocket, content=content)
+        await websocket.send_json(content)

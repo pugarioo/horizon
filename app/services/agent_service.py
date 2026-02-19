@@ -1,3 +1,4 @@
+import asyncio
 import gc
 from typing import List, Literal, overload
 
@@ -17,7 +18,7 @@ class AgentService:
     as well as generating chat completions with optional streaming.
     """
 
-    def load(self, path: str) -> None:
+    async def load(self, path: str) -> None:
         """
         Loads am SLM model from the given path.
 
@@ -30,7 +31,7 @@ class AgentService:
 
         print("Model loaded succesfully")
 
-    def unload(self) -> None:
+    async def unload(self) -> None:
         """
         Unloads the currently loaded Llama model to free up memory.
         """
@@ -40,7 +41,7 @@ class AgentService:
 
             gc.collect()
 
-    def swap(self, path: str) -> None:
+    async def swap(self, path: str) -> None:
         """
         Swaps the currently loaded SLM model with a new one from the given path.
 
@@ -53,7 +54,7 @@ class AgentService:
         self.load(path=path)
 
     @overload
-    def generate(
+    async def generate(
         self,
         messages: List[ChatCompletionRequestMessage],
         temp: float,
@@ -61,14 +62,14 @@ class AgentService:
     ) -> CreateChatCompletionResponse: ...
 
     @overload
-    def generate(
+    async def generate(
         self,
         messages: List[ChatCompletionRequestMessage],
         temp: float,
         stream: Literal[True],
     ) -> Iterator[CreateChatCompletionStreamResponse]: ...
 
-    def generate(
+    async def generate(
         self,
         messages: List[ChatCompletionRequestMessage],
         temp: float,
@@ -86,8 +87,11 @@ class AgentService:
             A chat completion response or an iterator of stream responses.
         """
 
-        response = self.model.create_chat_completion(
-            messages=messages, temperature=temp, stream=stream
+        response = await asyncio.to_thread(
+            self.model.create_chat_completion,
+            messages=messages,
+            temperature=temp,
+            stream=stream,
         )
 
         return response

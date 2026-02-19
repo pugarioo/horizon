@@ -190,3 +190,15 @@ class ContextManager:
 
     def add_agent_log(self, log: LogEntry) -> None:
         self._agent_logs.append(log)
+
+    def add_conversation_id(self) -> str:
+        conversation_id = str(uuid.uuid4())
+        self._db_cursor.execute(
+            """
+            INSERT INTO conversations (id, name, timestamp)
+            VALUES (?, ?, ?)
+            """,
+            (conversation_id, "New Conversation", int(time.time())),
+        )
+
+        return conversation_id
