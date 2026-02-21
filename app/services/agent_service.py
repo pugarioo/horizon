@@ -25,8 +25,8 @@ class AgentService:
         Args:
             path: The path to the SLM model .gguf file.
         """
-        self.model: Llama = Llama(
-            model_path=path, n_gpu_layers=50, n_ctx=4096, verbose=False
+        self.model = await asyncio.to_thread(
+            Llama, model_path=path, n_gpu_layers=50, n_ctx=4096, verbose=False
         )
 
         print("Model loaded succesfully")
@@ -36,10 +36,12 @@ class AgentService:
         Unloads the currently loaded Llama model to free up memory.
         """
 
-        if self.model:
+        if getattr(self, "model", None) is not None:
             del self.model
+            self.model = None
 
-            gc.collect()
+            # Execute blocking garbage collection on a background thread
+            await asyncio.to_thread(gc.collect)
 
     async def swap(self, path: str) -> None:
         """
@@ -49,9 +51,9 @@ class AgentService:
             path: The path to the new Llama model.
         """
 
-        self.unload()
+        await self.unload()
 
-        self.load(path=path)
+        await self.load(path=path)
 
     @overload
     async def generate(
@@ -86,6 +88,9 @@ class AgentService:
         Returns:
             A chat completion response or an iterator of stream responses.
         """
+
+        if self.model is None:
+            raise ValueError("Model not loaded")
 
         response = await asyncio.to_thread(
             self.model.create_chat_completion,

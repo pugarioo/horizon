@@ -66,9 +66,6 @@ class Orchestrator:
             websocket: The active WebSocket connection for real-time communication.
         """
 
-        # Store user message
-        self.context_manager.store_memory(conversation_id, user_prompt)
-
         # 1. Initial Generation - Model A (Llama)
         await self.websocket_manager.send_status(
             websocket, State.LOADING_MODEL, Roles.GENERATOR_A
@@ -230,8 +227,11 @@ class Orchestrator:
                 )
                 await asyncio.sleep(0)
 
+        # Store user message
+        await self.context_manager.store_memory(conversation_id, user_prompt)
+
         # Store final response
-        self.context_manager.store_memory(conversation_id, full_content)
+        await self.context_manager.store_memory(conversation_id, full_content)
 
         print(full_content)
 
@@ -341,7 +341,7 @@ class Orchestrator:
             A CreateChatCompletionResponse with the initial generated answer.
         """
 
-        relevant_context: str = self.context_manager.search_context(
+        relevant_context: str = await self.context_manager.search_context(
             query=user_prompt, conversation_id=conversation_id
         )
 
