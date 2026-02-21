@@ -42,8 +42,7 @@ class ContextManager:
         self._db_cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS conversations (
-                id TEXT PRIMARY KEY,
-                conversation_id TEXT,
+                conversation_id TEXT PRIMARY KEY,
                 name TEXT,
                 timestamp INTEGER
             )
@@ -195,7 +194,7 @@ class ContextManager:
         conversation_id = str(uuid.uuid4())
         self._db_cursor.execute(
             """
-            INSERT INTO conversations (id, name, timestamp)
+            INSERT INTO conversations (conversation_id, name, timestamp)
             VALUES (?, ?, ?)
             """,
             (conversation_id, "New Conversation", int(time.time())),
