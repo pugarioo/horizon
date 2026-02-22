@@ -1,6 +1,7 @@
 import json
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.services.agent_service import AgentService
 from app.services.context_manager import ContextManager
@@ -8,6 +9,19 @@ from app.services.orchestrator import Orchestrator
 from app.services.websocket_manager import WebSocketManager
 
 app: FastAPI = FastAPI()
+
+origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
+app.add_middleware(
+    CORSMiddleware,  # type: ignore
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 agent_service: AgentService = AgentService()
 context_manager: ContextManager = ContextManager()
