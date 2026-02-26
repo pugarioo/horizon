@@ -1,6 +1,6 @@
 import asyncio
 import gc
-from typing import List, Literal, overload
+from typing import List, Literal, Optional, overload
 
 from llama_cpp import Iterator, Llama
 from llama_cpp.llama_types import (
@@ -12,48 +12,63 @@ from llama_cpp.llama_types import (
 
 class AgentService:
     """
-    Handles the lifecycle and operations of the Small Language Models (LLM).
-
-    This service provides methods to load, unload, and swap GGUF models using llama-cpp-python,
-    as well as generating chat completions with optional streaming.
+    Handles the lifecycle and operations of the Small Language Models (SLM).
+    Optimized for 4GB VRAM hardware with dynamic layer offloading.
     """
 
-    async def load(self, path: str) -> None:
+    def __init__(self):
+        self.model: Optional[Llama] = None
+        self.current_model_path: Optional[str] = None
+
+    async def load(self, path: str, n_gpu_layers: int = 50, n_ctx: int = 2048) -> None:
         """
-        Loads am SLM model from the given path.
+        Loads an SLM model with dynamic hardware constraints.
 
         Args:
-            path: The path to the SLM model .gguf file.
+            path: Path to the .gguf file.
+            n_gpu_layers: Number of layers to offload to GPU.
+            n_ctx: Context window size.
         """
+        # Bypass I/O if the model is already in VRAM
+        if self.current_model_path == path and self.model is not None:
+            return
+
         self.model = await asyncio.to_thread(
-            Llama, model_path=path, n_gpu_layers=50, n_ctx=4096, verbose=False
+            Llama,
+            model_path=path,
+            n_gpu_layers=n_gpu_layers,
+            n_ctx=n_ctx,
+            flash_attn=True,  # Critical for Gemma 3 / Phi memory efficiency
+            verbose=False,
         )
 
-        print("Model loaded succesfully")
+        self.current_model_path = path
+        print(
+            f"Model loaded successfully: {path} (Layers: {n_gpu_layers}, Context: {n_ctx})"
+        )
 
     async def unload(self) -> None:
         """
-        Unloads the currently loaded Llama model to free up memory.
+        Force-releases VRAM and synchronizes deallocation.
         """
-
-        if getattr(self, "model", None) is not None:
+        if self.model is not None:
             del self.model
             self.model = None
+            self.current_model_path = None
 
-            # Execute blocking garbage collection on a background thread
+            # Flush Python objects and wait for CUDA driver to unmap memory
             await asyncio.to_thread(gc.collect)
+            await asyncio.sleep(0.5)
 
-    async def swap(self, path: str) -> None:
+    async def swap(self, path: str, n_gpu_layers: int = 50, n_ctx: int = 2048) -> None:
         """
-        Swaps the currently loaded SLM model with a new one from the given path.
-
-        Args:
-            path: The path to the new Llama model.
+        Swaps models, only triggering unload if a different model is requested.
         """
+        if self.current_model_path == path:
+            return
 
         await self.unload()
-
-        await self.load(path=path)
+        await self.load(path=path, n_gpu_layers=n_gpu_layers, n_ctx=n_ctx)
 
     @overload
     async def generate(
@@ -78,17 +93,8 @@ class AgentService:
         stream: bool = False,
     ) -> CreateChatCompletionResponse | Iterator[CreateChatCompletionStreamResponse]:
         """
-        Generates a chat completion response based on the given messages and temperature.
-
-        Args:
-            messages: A list of chat completion request messages.
-            temp: The temperature for the generation.
-            stream: Whether to stream the response.
-
-        Returns:
-            A chat completion response or an iterator of stream responses.
+        Generates completions with repetition penalty to prevent infinite loops.
         """
-
         if self.model is None:
             raise ValueError("Model not loaded")
 
@@ -96,6 +102,7 @@ class AgentService:
             self.model.create_chat_completion,
             messages=messages,
             temperature=temp,
+            repeat_penalty=1.15,
             stream=stream,
         )
 

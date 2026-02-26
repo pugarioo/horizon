@@ -245,6 +245,198 @@ class Orchestrator:
 
         await self.websocket_manager.send_status(websocket, State.IDLE, None)
 
+    async def orchestrate_loop(
+        self,
+        user_prompt: str,
+        conversation_id: str,
+        websocket: WebSocket,
+    ) -> None:
+        """
+        Iterative orchestration using dynamic hardware constraints from nested YAML.
+        """
+        MAX_RETRIES = 2
+        models_cfg = self.model_config["models"]
+
+        # --- PREAMBLE ---
+        await self.context_manager.store_memory(conversation_id, user_prompt)
+
+        # --- PIPELINE A: LLAMA GENERATOR ---
+        await self.websocket_manager.send_status(
+            websocket, State.LOADING_MODEL, Roles.GENERATOR_A
+        )
+        # Pulling nested config: models -> llama -> [file_name, layers]
+        await self.agent_service.load(
+            path=str(MODELS_DIR / models_cfg["llama"]["file_name"]),
+            n_gpu_layers=models_cfg["llama"]["layers"],
+            n_ctx=4096,  # Generators get full context
+        )
+
+        if self._is_new(conversation_id):
+            title = await self.generate_title(user_prompt)
+            await self.context_manager.store_memory(conversation_id, title)
+            await self.websocket_manager.send_title(websocket, title)
+
+        init_completion_a = await self._run_step(
+            websocket,
+            Roles.GENERATOR_A,
+            self._generate_initial_response,
+            conversation_id,
+            user_prompt,
+        )
+        current_candidate_a = self._get_text(init_completion_a)
+
+        attempts_a = 0
+        while attempts_a < MAX_RETRIES:
+            # Swap to Qwen for Critique
+            await self.websocket_manager.send_status(
+                websocket, State.SWAPPING_MODEL, Roles.CRITIC_A
+            )
+            await self.agent_service.swap(
+                path=str(MODELS_DIR / models_cfg["qwen"]["file_name"]),
+                n_gpu_layers=models_cfg["qwen"]["layers"],
+            )
+
+            critique_a = await self._run_step(
+                websocket,
+                Roles.CRITIC_A,
+                self._generate_critique,
+                user_prompt,
+                current_candidate_a,
+            )
+            critique_text_a = self._get_text(critique_a)
+
+            if not self.contains_refinement_request(text=critique_text_a):
+                break
+
+            # Swap back to Llama for Refinement
+            await self.websocket_manager.send_status(
+                websocket, State.SWAPPING_MODEL, Roles.GENERATOR_A
+            )
+            await self.agent_service.swap(
+                path=str(MODELS_DIR / models_cfg["llama"]["file_name"]),
+                n_gpu_layers=models_cfg["llama"]["layers"],
+            )
+
+            refined_a = await self._run_step(
+                websocket,
+                Roles.GENERATOR_A,
+                self._generate_refined_response,
+                user_prompt,
+                current_candidate_a,
+                critique_text_a,
+            )
+            current_candidate_a = self._get_text(refined_a)
+            attempts_a += 1
+
+        # --- PIPELINE B: QWEN GENERATOR ---
+        await self.websocket_manager.send_status(
+            websocket, State.SWAPPING_MODEL, Roles.GENERATOR_B
+        )
+        await self.agent_service.swap(
+            path=str(MODELS_DIR / models_cfg["qwen"]["file_name"]),
+            n_gpu_layers=models_cfg["qwen"]["layers"],
+        )
+
+        init_completion_b = await self._run_step(
+            websocket,
+            Roles.GENERATOR_B,
+            self._generate_initial_response,
+            conversation_id,
+            user_prompt,
+        )
+        current_candidate_b = self._get_text(init_completion_b)
+
+        attempts_b = 0
+        while attempts_b < MAX_RETRIES:
+            # Swap to Llama for Critique
+            await self.websocket_manager.send_status(
+                websocket, State.SWAPPING_MODEL, Roles.CRITIC_B
+            )
+            await self.agent_service.swap(
+                path=str(MODELS_DIR / models_cfg["llama"]["file_name"]),
+                n_gpu_layers=models_cfg["llama"]["layers"],
+            )
+
+            critique_b = await self._run_step(
+                websocket,
+                Roles.CRITIC_B,
+                self._generate_critique,
+                user_prompt,
+                current_candidate_b,
+            )
+            critique_text_b = self._get_text(critique_b)
+
+            if not self.contains_refinement_request(text=critique_text_b):
+                break
+
+            # Swap back to Qwen for Refinement
+            await self.websocket_manager.send_status(
+                websocket, State.SWAPPING_MODEL, Roles.GENERATOR_B
+            )
+            await self.agent_service.swap(
+                path=str(MODELS_DIR / models_cfg["qwen"]["file_name"]),
+                n_gpu_layers=models_cfg["qwen"]["layers"],
+            )
+
+            refined_b = await self._run_step(
+                websocket,
+                Roles.GENERATOR_B,
+                self._generate_refined_response,
+                user_prompt,
+                current_candidate_b,
+                critique_text_b,
+            )
+            current_candidate_b = self._get_text(refined_b)
+            attempts_b += 1
+
+        # --- FINAL SYNTHESIS: GEMMA 3 JUDGE ---
+        await self.websocket_manager.send_status(
+            websocket, State.SWAPPING_MODEL, Roles.JUDGE
+        )
+
+        # Pulling judge config (previously 'deepseek' / 'phi', now 'gemma')
+        judge_cfg = models_cfg["gemma"]
+        await self.agent_service.swap(
+            path=str(MODELS_DIR / judge_cfg["file_name"]),
+            n_gpu_layers=judge_cfg["layers"],
+            n_ctx=2048,  # Tight context for the synthesis layer
+        )
+
+        await self.websocket_manager.send_status(
+            websocket, State.GENERATING, Roles.JUDGE
+        )
+
+        clean_sol_a = current_candidate_a.replace("[RA]", "").strip()
+        clean_sol_b = current_candidate_b.replace("[RA]", "").strip()
+
+        stream: Iterator[
+            CreateChatCompletionStreamResponse
+        ] = await self._evaluate_and_synthesize(
+            user_prompt=user_prompt,
+            candidate_solution_a=clean_sol_a,
+            candidate_solution_b=clean_sol_b,
+        )
+
+        full_content = ""
+        for chunk in stream:
+            delta = chunk["choices"][0]["delta"]
+            content = delta.get("content")
+            if content:
+                full_content += content
+                await self.websocket_manager.send_message(
+                    websocket=websocket, content={"type": "token", "content": content}
+                )
+                await asyncio.sleep(0)
+
+        # Sanitize and store
+        clean_final_content = re.sub(
+            r"<think>.*?</think>", "", full_content, flags=re.DOTALL
+        ).strip()
+        await self.context_manager.store_memory(conversation_id, clean_final_content)
+
+        await self.agent_service.unload()
+        await self.websocket_manager.send_status(websocket, State.IDLE, None)
+
     async def _generate_critique(
         self, user_prompt: str, answer: str
     ) -> CreateChatCompletionResponse:
@@ -391,14 +583,14 @@ class Orchestrator:
         query: List[ChatCompletionRequestMessage] = [
             {
                 "role": "system",
-                "content": self.model_config["agents"]["generator"]["system_prompt"],
+                "content": self.model_config["agents"]["refiner"]["system_prompt"],
             },
             {"role": "user", "content": content},
         ]
 
         response = await self.agent_service.generate(
             messages=query,
-            temp=self.model_config["agents"]["generator"]["temperature"],
+            temp=self.model_config["agents"]["refiner"]["temperature"],
             stream=False,
         )
 
