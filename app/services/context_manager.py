@@ -12,7 +12,7 @@ from chromadb.utils.embedding_functions.sentence_transformer_embedding_function 
     SentenceTransformerEmbeddingFunction,
 )
 
-from app.paths import DB_DIR
+from app.paths import DB_DIR, MODELS_DIR
 from app.services.utils import LogEntry
 
 
@@ -29,7 +29,7 @@ class ContextManager:
         self._client: ClientAPI = chromadb.PersistentClient(path=DB_DIR)
         self._embedder: SentenceTransformerEmbeddingFunction = (
             embedding_functions.SentenceTransformerEmbeddingFunction(
-                model_name="all-MiniLM-L6-v2"
+                model_name=str(MODELS_DIR / "all-MiniLM-L6-v2")
             )
         )
         self._collection = self._client.get_or_create_collection(

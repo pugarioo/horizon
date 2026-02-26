@@ -8,11 +8,13 @@ BASE_DIR = Path(__file__).parent
 MODELS_DIR = BASE_DIR / "models"
 DB_DIR = BASE_DIR / "app" / "db"
 REQUIREMENTS_FILE = BASE_DIR / "requirements.txt"
+TARGET_DIR = MODELS_DIR / "all-MiniLM-L6-v2"
 
 MODELS = {
     "deepseek_engine.gguf": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q8_0.gguf",
     "qwen_engine.gguf": "https://huggingface.co/bartowski/Qwen2.5-3B-Instruct-GGUF/resolve/main/Qwen2.5-3B-Instruct-Q4_K_M.gguf",
     "llama_engine.gguf": "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+    "monolith_engine.gguf": "https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
 }
 
 
@@ -62,6 +64,24 @@ def download_models() -> None:
             run_command(f"wget -O {target_path} {url}")
 
 
+def download_embedding_model() -> None:
+    try:
+        import huggingface_hub
+    except ImportError:
+        subprocess.check_call(
+            [sys.executable, "-m", "pip", "install", "huggingface_hub"]
+        )
+
+    from huggingface_hub import snapshot_download
+
+    TARGET_DIR.mkdir(parents=True, exist_ok=True)
+
+    snapshot_download(
+        repo_id="sentence-transformers/all-MiniLM-L6-v2",
+        local_dir=str(TARGET_DIR),
+    )
+
+
 def init_databases() -> None:
     DB_DIR.mkdir(parents=True, exist_ok=True)
     db_path = DB_DIR / "chat_history.db"
@@ -92,4 +112,5 @@ def init_databases() -> None:
 if __name__ == "__main__":
     install_dependencies()
     download_models()
+    download_embedding_model()
     init_databases()
