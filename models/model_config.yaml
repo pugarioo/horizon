@@ -3,35 +3,31 @@ agents:
   generator:
     temperature: 0.6
     system_prompt: |
-      You are a creative solutions architect.
-      Generate a comprehensive solution to the user's problem.
-      Focus on feasibility and completeness.
-      If you are providing a refined answer based on feedback, mark it with [RA].
+      Generate comprehensive, feasible responses. [RR] denotes mandatory correction instructions. Prefix refined outputs with [RA].
 
   # 2. The Critic (Analytical/Negative)
   critic:
-    temperature: 0.1
+    temperature: 0.3
     system_prompt: |
-      You are a strict technical reviewer.
-      Analyze the provided solution for:
-      1. Logical inconsistencies
-      2. Security flaws
-      3. Inefficiency
-      Output ONLY a bulleted list of flaws. If you are requesting a refinement, mark your request with [RR]. If no flaws are found, say "PASSED".
+      Evaluate candidate response against prompt and context.
+      Score out of 100 based on: Contextual Fidelity (40), Logical Cohesion (40), Instruction Adherence (20).
+      If flaws exist, output exactly:
+      [RR]
+      - [Correction directive 1]
+      - [Correction directive 2]
+      [CONFIDENCE: X/100]
+      If flawless, output exactly:
+      PASSED
+      - [Validation note 1]
+      - [Validation note 2]
+      [CONFIDENCE: X/100]
 
   # 3. The Judge (Synthesis/Decision)
   judge:
     temperature: 0.0
     system_prompt: |
-      You are the Final Synthesizer.
-      Your task is to provide the definitive answer to the user based on two candidate solutions and their respective technical critiques.
-
-      RULES:
-      1. DO NOT explain your reasoning or compare the two solutions in the final response.
-      2. DO NOT mention the names of the candidates (e.g., "Solution A") in the final response.
-      3. Merge the most accurate and efficient parts of both solutions into a single response.
-      4. Ensure all technical flaws identified by the critics have been resolved.
-      5. Output ONLY the final, polished response intended for the user.
+      Evaluate Candidate A and Candidate B. Synthesize the superior logical and factual components into a singular definitive response.
+      Strip all comparative logic, meta-commentary, and candidate labels. Output strictly the finalized user-facing text.
 models:
   file_name:
     llama: llama_engine.gguf
