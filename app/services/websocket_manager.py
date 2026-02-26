@@ -41,3 +41,18 @@ class WebSocketManager:
         """
 
         await websocket.send_json(content)
+
+    async def send_title(
+        self,
+        websocket: WebSocket,
+        title: str,
+    ) -> None:
+        """
+        Sends a title message through an active WebSocket connection.
+
+        Args:
+            websocket: The WebSocket instance to send the message through.
+            title: The title to send.
+        """
+
+        await websocket.send_json({"type": "title", "title": title})

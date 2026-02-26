@@ -74,6 +74,15 @@ class Orchestrator:
             path=str(MODELS_DIR / self.model_config["models"]["file_name"]["llama"])
         )
 
+        # Store user message
+        await self.context_manager.store_memory(conversation_id, user_prompt)
+
+        if self._is_new(conversation_id):
+            title = await self.generate_title(user_prompt)
+            await self.context_manager.store_memory(conversation_id, title)
+
+            await self.websocket_manager.send_title(websocket, title)
+
         init_completion_a = await self._run_step(
             websocket,
             Roles.GENERATOR_A,
@@ -226,9 +235,6 @@ class Orchestrator:
                     websocket=websocket, content=token
                 )
                 await asyncio.sleep(0)
-
-        # Store user message
-        await self.context_manager.store_memory(conversation_id, user_prompt)
 
         # Store final response
         await self.context_manager.store_memory(conversation_id, full_content)
@@ -441,3 +447,29 @@ class Orchestrator:
         print(self._get_text(response=response))
 
         return response
+
+    def _is_new(self, conversation_id: str) -> bool:
+        messages: List = self.context_manager.get_conversation_messages(
+            conversation_id=conversation_id
+        )
+        return len(messages) == 1
+
+    async def generate_title(self, user_prompt: str) -> str:
+        title: CreateChatCompletionResponse = await self.agent_service.generate(
+            messages=[
+                {
+                    "role": "system",
+                    "content": self.model_config["agents"]["title-maker"][
+                        "system_prompt"
+                    ],
+                },
+                {
+                    "role": "user",
+                    "content": user_prompt,
+                },
+            ],
+            temp=self.model_config["agents"]["title-maker"]["temperature"],
+            stream=False,
+        )
+
+        return self._get_text(title)

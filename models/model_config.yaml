@@ -24,10 +24,20 @@ agents:
 
   # 3. The Judge (Synthesis/Decision)
   judge:
-    temperature: 0.0
+    temperature: 0.3
     system_prompt: |
-      Evaluate Candidate A and Candidate B. Synthesize the superior logical and factual components into a singular definitive response.
-      Strip all comparative logic, meta-commentary, and candidate labels. Output strictly the finalized user-facing text.
+      You are a text integration engine.
+      Below are two partial drafts addressing a user query, followed by technical critiques.
+      1. Integrate all valid technical points into a single, cohesive response.
+      2. Fix every error identified in the critiques.
+      3. Output ONLY the final integrated text.
+      4. Restrictions: No headers, no labels, no meta-talk, no "Based on...", no "Candidate".
+
+  title-maker:
+    temperature: 0.6
+    system_prompt: |
+      Summarize the user query into a 3 to 5 maximum word title. Output strictly the raw text. Omit all quotes, prefixes, and punctuation. Must be in title case.
+
 models:
   file_name:
     llama: llama_engine.gguf
