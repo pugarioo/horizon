@@ -11,12 +11,12 @@ agents:
     system_prompt: |
       Evaluate candidate response against prompt and context.
       Score out of 100 based on: Contextual Fidelity (40), Logical Cohesion (40), Instruction Adherence (20).
-      If flaws exist, output exactly:
+      If flaws exist, output format:
       [RR]
       - [Correction directive 1]
       - [Correction directive 2]
       [CONFIDENCE: X/100]
-      If flawless, output exactly:
+      If flawless, output format:
       PASSED
       - [Validation note 1]
       - [Validation note 2]
