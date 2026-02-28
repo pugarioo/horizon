@@ -1,6 +1,7 @@
 import json
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.services.agent_service import AgentService
 from app.services.context_manager import ContextManager
@@ -9,18 +10,18 @@ from app.services.websocket_manager import WebSocketManager
 
 app: FastAPI = FastAPI()
 
-agent_service: AgentService = AgentService()
-context_manager: ContextManager = ContextManager()
-websocket_manager: WebSocketManager = WebSocketManager()
+origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
 
-orchestrator: Orchestrator = Orchestrator(
-    agent_service=agent_service,
-    context_manager=context_manager,
-    websocket_manager=websocket_manager,
+app.add_middleware(
+    CORSMiddleware,  # type: ignore
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
-
-
-app: FastAPI = FastAPI()
 
 agent_service: AgentService = AgentService()
 context_manager: ContextManager = ContextManager()
@@ -35,7 +36,7 @@ orchestrator: Orchestrator = Orchestrator(
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
-    await websocket_manager.connect(websocket)
+    await websocket.accept()
 
     try:
         while True:
@@ -46,7 +47,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             id: str = ""
 
             if type == "chat_init":
-                id = context_manager.add_conversation_id()
+                id = await context_manager.add_conversation_id()
             elif type == "chat_msg":
                 id = message.get("conversation_id")
 
@@ -63,18 +64,18 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
 
 @app.get("/chats")
-async def get_conversations() -> dict:
+def get_conversations() -> dict:
     conversations = context_manager.get_conversations()
     return {
         "conversations": [
-            {"id": c[0], "conversation_id": c[1], "name": c[2], "timestamp": c[3]}
+            {"conversation_id": c[0], "name": c[1], "timestamp": c[2]}
             for c in conversations
         ]
     }
 
 
 @app.get("/chats/messages/{conversation_id}")
-async def get_messages(conversation_id: str) -> dict:
+def get_messages(conversation_id: str) -> dict:
     messages = context_manager.get_conversation_messages(conversation_id)
     return {
         "conversation_id": conversation_id,

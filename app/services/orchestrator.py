@@ -19,7 +19,7 @@ from llama_cpp.llama_types import (
 from app.paths import MODELS_CONFIG_PATH, MODELS_DIR
 from app.services.agent_service import AgentService
 from app.services.context_manager import ContextManager
-from app.services.utils import LogEntry, Roles, State
+from app.services.utils import LogEntry, Path, Roles, State
 from app.services.websocket_manager import WebSocketManager
 
 
@@ -58,162 +58,55 @@ class Orchestrator:
         websocket: WebSocket,
     ) -> None:
         """
-        Main entry point for starting the orchestration process for a user prompt.
-
-        Args:
-            user_prompt: The prompt provided by the user.
-            conversation_id: The unique identifier for the conversation.
-            websocket: The active WebSocket connection for real-time communication.
+        Iterative orchestration using dynamic hardware constraints from nested YAML.
         """
 
-        # Store user message
-        self.context_manager.store_memory(conversation_id, user_prompt)
+        await self.context_manager.store_memory(conversation_id, user_prompt)
 
-        # 1. Initial Generation - Model A (Llama)
-        await self.websocket_manager.send_status(
-            websocket, State.LOADING_MODEL, Roles.GENERATOR_A
+        await self.websocket_manager.send_current_path(websocket, Path.A)
+        current_candidate_a = await self._run_path(
+            websocket, conversation_id, user_prompt, Path.A
         )
-        await self.agent_service.load(
-            path=str(MODELS_DIR / self.model_config["models"]["file_name"]["llama"])
-        )
-
-        init_completion_a = await self._run_step(
-            websocket,
-            Roles.GENERATOR_A,
-            self._generate_initial_response,
-            conversation_id,
-            user_prompt,
-        )
-        candidate_sol_a = init_completion_a
-
-        # 2. Initial Generation - Model B (Qwen)
-        await self.websocket_manager.send_status(
-            websocket, State.SWAPPING_MODEL, Roles.GENERATOR_B
-        )
-        await self.agent_service.swap(
-            path=str(MODELS_DIR / self.model_config["models"]["file_name"]["qwen"])
+        await self.websocket_manager.send_current_path(websocket, Path.B)
+        current_candidate_b = await self._run_path(
+            websocket, conversation_id, user_prompt, Path.B
         )
 
-        init_completion_b = await self._run_step(
-            websocket,
-            Roles.GENERATOR_B,
-            self._generate_initial_response,
-            conversation_id,
-            user_prompt,
-        )
-        candidate_sol_b = init_completion_b
-
-        # 3. Critique Solution A (using Qwen)
-        critique_a = await self._run_step(
-            websocket,
-            Roles.CRITIC_A,
-            self._generate_critique,
-            user_prompt,
-            self._get_text(init_completion_a),
-        )
-
-        # 4. Refinement Solution A (Swap back to Llama)
-        await self.websocket_manager.send_status(
-            websocket, State.SWAPPING_MODEL, Roles.GENERATOR_A
-        )
-        await self.agent_service.swap(
-            path=str(MODELS_DIR / self.model_config["models"]["file_name"]["llama"])
-        )
-
-        refined_content_a = None
-        if self.contains_refinement_request(text=self._get_text(critique_a)):
-            refined_completion_a = await self._run_step(
-                websocket,
-                Roles.GENERATOR_A,
-                self._generate_refined_response,
-                user_prompt,
-                self._get_text(init_completion_a),
-                self._get_text(critique_a),
-            )
-            refined_content_a = self._get_text(refined_completion_a)
-
-        # 5. Critique Solution B (using Llama)
-        critique_b = await self._run_step(
-            websocket,
-            Roles.CRITIC_B,
-            self._generate_critique,
-            user_prompt,
-            self._get_text(init_completion_b),
-        )
-
-        # 6. Refinement Solution B (Swap to Qwen)
-        await self.websocket_manager.send_status(
-            websocket, State.SWAPPING_MODEL, Roles.GENERATOR_B
-        )
-        await self.agent_service.swap(
-            path=str(MODELS_DIR / self.model_config["models"]["file_name"]["qwen"])
-        )
-
-        refined_content_b = None
-        if self.contains_refinement_request(text=self._get_text(critique_b)):
-            refined_completion_b = await self._run_step(
-                websocket,
-                Roles.GENERATOR_B,
-                self._generate_refined_response,
-                user_prompt,
-                self._get_text(init_completion_b),
-                self._get_text(critique_b),
-            )
-            refined_content_b = self._get_text(refined_completion_b)
-
-        # 7. Finalize Candidate Solution A (using Qwen)
-        if refined_content_a:
-            final_sol_a_completion = await self._run_step(
-                websocket,
-                Roles.CRITIC_A,
-                self._finalize_candidate_solution,
-                user_prompt,
-                self._get_text(init_completion_a),
-                refined_content_a,
-                self._get_text(critique_a),
-            )
-            candidate_sol_a = final_sol_a_completion
-
-        # 8. Finalize Candidate Solution B (Swap to Llama)
-        if refined_content_b:
-            await self.websocket_manager.send_status(
-                websocket, State.SWAPPING_MODEL, Roles.CRITIC_B
-            )
-            await self.agent_service.swap(
-                path=str(MODELS_DIR / self.model_config["models"]["file_name"]["llama"])
-            )
-            final_sol_b_completion = await self._run_step(
-                websocket,
-                Roles.CRITIC_B,
-                self._finalize_candidate_solution,
-                user_prompt,
-                self._get_text(init_completion_b),
-                refined_content_b,
-                self._get_text(critique_b),
-            )
-            candidate_sol_b = final_sol_b_completion
-
-        # 9. Final Synthesis - Judge (DeepSeek)
+        # --- FINAL SYNTHESIS: GEMMA 3 JUDGE ---
         await self.websocket_manager.send_status(
             websocket, State.SWAPPING_MODEL, Roles.JUDGE
         )
+
+        judge_model: str = self.model_config["role_map"]["judge"]
+        # Pulling judge config (previously 'deepseek' / 'phi', now 'gemma')
         await self.agent_service.swap(
-            path=str(MODELS_DIR / self.model_config["models"]["file_name"]["deepseek"])
+            path=str(
+                MODELS_DIR / self.model_config["models"][judge_model]["file_name"]
+            ),
+            n_gpu_layers=self.model_config["models"][judge_model]["layers"],
+            n_ctx=self.model_config["agents"]["judge"]["context_tokens"],
         )
 
         await self.websocket_manager.send_status(
             websocket, State.GENERATING, Roles.JUDGE
         )
 
+        solution_a_text = (
+            self._get_text(current_candidate_a).replace("[RA]", "").strip()
+        )
+        solution_b_text = (
+            self._get_text(current_candidate_b).replace("[RA]", "").strip()
+        )
+
         stream: Iterator[
             CreateChatCompletionStreamResponse
         ] = await self._evaluate_and_synthesize(
             user_prompt=user_prompt,
-            candidate_solution_a=self._get_text(candidate_sol_a),
-            candidate_solution_b=self._get_text(candidate_sol_b),
+            candidate_solution_a=solution_a_text,
+            candidate_solution_b=solution_b_text,
         )
 
-        full_content: str = ""
+        full_content = ""
         for chunk in stream:
             delta: (
                 ChatCompletionStreamResponseDelta
@@ -221,22 +114,21 @@ class Orchestrator:
             ) = chunk["choices"][0]["delta"]
 
             content: Any | None = delta.get("content")
-
             if content:
-                token: dict = {"type": "token", "content": content}
                 full_content += content
                 await self.websocket_manager.send_message(
-                    websocket=websocket, content=token
+                    websocket=websocket, content={"type": "token", "content": content}
                 )
                 await asyncio.sleep(0)
 
-        # Store final response
-        self.context_manager.store_memory(conversation_id, full_content)
-
         print(full_content)
+        # Sanitize and store
+        clean_final_content = re.sub(
+            r"<think>.*?</think>", "", full_content, flags=re.DOTALL
+        ).strip()
+        await self.context_manager.store_memory(conversation_id, clean_final_content)
 
         await self.agent_service.unload()
-
         await self.websocket_manager.send_status(websocket, State.IDLE, None)
 
     async def _generate_critique(
@@ -263,29 +155,7 @@ class Orchestrator:
                 {"role": "user", "content": content},
             ],
             temp=self.model_config["agents"]["critic"]["temperature"],
-            stream=False,
-        )
-
-        return response
-
-    async def _finalize_candidate_solution(
-        self,
-        user_prompt: str,
-        initial_answer: str,
-        refined_answer: str,
-        refinement_request: str,
-    ) -> CreateChatCompletionResponse:
-        content: str = f"UserPrompt:{user_prompt}\n InitialAnswer:{initial_answer}\n RefinedAnswer:{refined_answer}\n RefinementRequest:{refinement_request}"
-
-        response: CreateChatCompletionResponse = await self.agent_service.generate(
-            messages=[
-                {
-                    "role": "system",
-                    "content": self.model_config["agents"]["critic"]["system_prompt"],
-                },
-                {"role": "user", "content": content},
-            ],
-            temp=self.model_config["agents"]["critic"]["temperature"],
+            max_tokens=self.model_config["agents"]["critic"]["max_tokens"],
             stream=False,
         )
 
@@ -322,6 +192,7 @@ class Orchestrator:
                 {"role": "user", "content": content},
             ],
             temp=self.model_config["agents"]["judge"]["temperature"],
+            max_tokens=self.model_config["agents"]["judge"]["max_tokens"],
             stream=True,
         )
 
@@ -341,7 +212,7 @@ class Orchestrator:
             A CreateChatCompletionResponse with the initial generated answer.
         """
 
-        relevant_context: str = self.context_manager.search_context(
+        relevant_context: str = await self.context_manager.search_context(
             query=user_prompt, conversation_id=conversation_id
         )
 
@@ -355,8 +226,13 @@ class Orchestrator:
             {"role": "user", "content": content},
         ]
 
+        print(self.model_config["agents"]["generator"]["max_tokens"])
+
         response = await self.agent_service.generate(
-            messages=query, temp=self.model_config["agents"]["generator"]["temperature"]
+            messages=query,
+            temp=self.model_config["agents"]["generator"]["temperature"],
+            max_tokens=self.model_config["agents"]["generator"]["max_tokens"],
+            stream=False,
         )
 
         return response
@@ -385,14 +261,15 @@ class Orchestrator:
         query: List[ChatCompletionRequestMessage] = [
             {
                 "role": "system",
-                "content": self.model_config["agents"]["generator"]["system_prompt"],
+                "content": self.model_config["agents"]["refiner"]["system_prompt"],
             },
             {"role": "user", "content": content},
         ]
 
         response = await self.agent_service.generate(
             messages=query,
-            temp=self.model_config["agents"]["generator"]["temperature"],
+            temp=self.model_config["agents"]["refiner"]["temperature"],
+            max_tokens=self.model_config["agents"]["refiner"]["max_tokens"],
             stream=False,
         )
 
@@ -441,3 +318,124 @@ class Orchestrator:
         print(self._get_text(response=response))
 
         return response
+
+    async def _run_path(
+        self, websocket: WebSocket, conversation_id: str, user_prompt: str, path: Path
+    ) -> CreateChatCompletionResponse:
+
+        MAX_RETRIES = 2
+
+        generator_model: str = self.model_config["role_map"]["path"][
+            "a" if path == Path.A else "b"
+        ]["generator"]
+        critic_model: str = self.model_config["role_map"]["path"][
+            "a" if path == Path.A else "b"
+        ]["critic"]
+
+        await self.websocket_manager.send_status(
+            websocket, State.LOADING_MODEL, Roles.GENERATOR
+        )
+        # Pulling nested config: models -> llama -> [file_name, layers]
+        await self.agent_service.load(
+            path=str(
+                MODELS_DIR / self.model_config["models"][generator_model]["file_name"]
+            ),
+            n_gpu_layers=self.model_config["models"][generator_model]["layers"],
+            n_ctx=self.model_config["agents"]["generator"]["context_tokens"],
+        )
+
+        if path == Path.A and self._is_new(conversation_id):
+            title = await self.generate_title(user_prompt)
+            await self.context_manager.store_memory(conversation_id, title)
+            await self.websocket_manager.send_title(websocket, title)
+
+        init_completion = await self._run_step(
+            websocket,
+            Roles.GENERATOR,
+            self._generate_initial_response,
+            conversation_id,
+            user_prompt,
+        )
+        current_candidate: CreateChatCompletionResponse = init_completion
+
+        attempts_a = 0
+
+        while attempts_a < MAX_RETRIES:
+            # Swap to Qwen for Critique
+            await self.websocket_manager.send_status(
+                websocket, State.SWAPPING_MODEL, Roles.CRITIC
+            )
+            await self.agent_service.swap(
+                path=str(
+                    MODELS_DIR / self.model_config["models"][critic_model]["file_name"]
+                ),
+                n_gpu_layers=self.model_config["models"][critic_model]["layers"],
+                n_ctx=self.model_config["agents"]["critic"]["context_tokens"],
+            )
+
+            critique: CreateChatCompletionResponse = await self._run_step(
+                websocket,
+                Roles.CRITIC,
+                self._generate_critique,
+                user_prompt,
+                self._get_text(current_candidate),
+            )
+            critique_text: str = self._get_text(critique)
+
+            if not self.contains_refinement_request(text=critique_text):
+                break
+
+            # Swap back to Llama for Refinement
+            await self.websocket_manager.send_status(
+                websocket, State.SWAPPING_MODEL, Roles.GENERATOR
+            )
+            await self.agent_service.swap(
+                path=str(
+                    MODELS_DIR
+                    / self.model_config["models"][generator_model]["file_name"]
+                ),
+                n_gpu_layers=self.model_config["models"][generator_model]["layers"],
+                n_ctx=self.model_config["agents"]["generator"]["context_tokens"],
+            )
+
+            refined_response: CreateChatCompletionResponse = await self._run_step(
+                websocket,
+                Roles.GENERATOR,
+                self._generate_refined_response,
+                user_prompt,
+                current_candidate,
+                critique_text,
+            )
+            current_candidate = refined_response
+            attempts_a += 1
+
+        await self.agent_service.unload()
+
+        return current_candidate
+
+    def _is_new(self, conversation_id: str) -> bool:
+        messages: List = self.context_manager.get_conversation_messages(
+            conversation_id=conversation_id
+        )
+        return len(messages) == 1
+
+    async def generate_title(self, user_prompt: str) -> str:
+        title: CreateChatCompletionResponse = await self.agent_service.generate(
+            messages=[
+                {
+                    "role": "system",
+                    "content": self.model_config["agents"]["title-maker"][
+                        "system_prompt"
+                    ],
+                },
+                {
+                    "role": "user",
+                    "content": user_prompt,
+                },
+            ],
+            temp=self.model_config["agents"]["title-maker"]["temperature"],
+            max_tokens=self.model_config["agents"]["title-maker"]["max_tokens"],
+            stream=False,
+        )
+
+        return self._get_text(title)

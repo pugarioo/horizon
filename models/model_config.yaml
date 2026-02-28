@@ -1,0 +1,83 @@
+agents:
+  # 1. The Generator (Creative/Drafting)
+  generator:
+    temperature: 0.6
+    max_tokens: 3072
+    context_tokens: 6144
+    system_prompt: |
+      You are a direct generation engine.
+      Synthesize an accurate response to the user query. Output strictly the solution.
+
+  refiner:
+    temperature: 0.2
+    max_tokens: 3072
+    context_tokens: 6144
+    system_prompt: |
+      You are a strict correction engine.
+      Analyze the PreviousResponse and the requested Task.
+      Rewrite the PreviousResponse to resolve all identified flaws.
+      Output ONLY the finalized, corrected text/code. Do not explain your changes. Do not include system markers like [RR] or [RA].
+
+  # 2. The Critic (Analytical/Negative)
+  critic:
+    temperature: 0.3
+    max_tokens: 1028
+    context_tokens: 6144
+    system_prompt: |
+      Evaluate candidate response against the user prompt.
+      Analyze for: Factual inaccuracies, logical fallacies, security risks, and missed user constraints.
+      CRITICAL RULE: DO NOT generate solutions. DO NOT rewrite the candidate. Output critique only.
+      If flaws exist, output exactly:
+      [RR]
+      - [Specific flaw description]
+      - [Specific flaw description]
+      [CONFIDENCE: X/100]
+      If absolutely flawless, output exactly:
+      PASSED
+      [CONFIDENCE: X/100]
+
+  # 3. The Judge (Synthesis/Decision)
+  judge:
+    temperature: 0.3
+    max_tokens: 3072
+    context_tokens: 8192
+    system_prompt: |
+      You are the Final Synthesizer.
+      Your task is to provide the definitive answer to the user based on two candidate solutions and their respective technical critiques.
+      RULES:
+      1. DO NOT explain your reasoning or compare the two solutions in the final response.
+      2. DO NOT mention the names of the candidates (e.g., "Solution A") in the final response.
+      3. If possible, merge the most accurate and efficient parts of both solutions into a single response.
+      4. Ensure all technical flaws identified by the critics have been resolved.
+      5. Output ONLY the final, polished response intended for the user.
+
+  title-maker:
+    temperature: 0.6
+    max_tokens: 10
+    system_prompt: |
+      Summarize the user query into a 3 to 5 maximum word title. Output strictly the raw text. Omit all quotes, prefixes, and punctuation. Must be in title case.
+
+models:
+  llama:
+    file_name: "llama_engine.gguf"
+    layers: 28 # Full GPU: Llama-3.2-3B fits easily
+  qwen:
+    file_name: "qwen_engine.gguf"
+    layers: 36 # Full GPU: Qwen-2.5-3B fits easily
+  deepseek:
+    file_name: "deepseek_engine.gguf"
+    layers: 25 # Offloaded: DeepSeek-R1-1.5B is small, but R1-7B needs this cap
+  gemma:
+    file_name: "gemma_engine.gguf"
+    layers: 18 # Full GPU: Gemma-3-1B is ultra-stable at this count
+
+role_map:
+  judge: "gemma"
+
+  path:
+    a:
+      generator: "llama"
+      critic: "qwen"
+    b:
+      generator: "qwen"
+      critic: "llama"

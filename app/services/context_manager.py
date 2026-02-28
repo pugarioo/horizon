@@ -1,3 +1,4 @@
+import asyncio
 import sqlite3
 import time
 import uuid
@@ -11,7 +12,7 @@ from chromadb.utils.embedding_functions.sentence_transformer_embedding_function 
     SentenceTransformerEmbeddingFunction,
 )
 
-from app.paths import DB_DIR
+from app.paths import DB_DIR, MODELS_DIR
 from app.services.utils import LogEntry
 
 
@@ -28,7 +29,7 @@ class ContextManager:
         self._client: ClientAPI = chromadb.PersistentClient(path=DB_DIR)
         self._embedder: SentenceTransformerEmbeddingFunction = (
             embedding_functions.SentenceTransformerEmbeddingFunction(
-                model_name="all-MiniLM-L6-v2"
+                model_name=str(MODELS_DIR / "all-MiniLM-L6-v2")
             )
         )
         self._collection = self._client.get_or_create_collection(
@@ -37,7 +38,9 @@ class ContextManager:
         )
 
         # Initialize the SQLite database
-        self._db_conn: sqlite3.Connection = sqlite3.connect(DB_DIR / "chat_history.db")
+        self._db_conn: sqlite3.Connection = sqlite3.connect(
+            DB_DIR / "chat_history.db", check_same_thread=False
+        )
         self._db_cursor: sqlite3.Cursor = self._db_conn.cursor()
         self._db_cursor.execute(
             """
@@ -62,7 +65,9 @@ class ContextManager:
 
         self._db_conn.commit()
 
-    def store_memory(self, conversation_id: str, content: str | list[str]) -> None:
+    async def store_memory(
+        self, conversation_id: str, content: str | list[str]
+    ) -> None:
         """
         Stores chat content in both the ChromaDB vector collection and the SQLite chat_messages table.
 
@@ -75,7 +80,8 @@ class ContextManager:
             [content] if isinstance(content, str) else content
         )
 
-        self._collection.add(
+        await asyncio.to_thread(
+            self._collection.add,
             documents=formatted_content,
             ids=[
                 self._generate_id(conversation_id=conversation_id)
@@ -87,21 +93,26 @@ class ContextManager:
             ],
         )
 
-        self._db_cursor.execute(
-            """
-            INSERT INTO chat_messages (id, conversation_id, content, timestamp)
-            VALUES (?, ?, ?, ?)
-            """,
-            (
-                self._generate_id(conversation_id=conversation_id),
-                conversation_id,
-                formatted_content[0],
-                int(time.time()),
-            ),
-        )
-        self._db_conn.commit()
+        def _db_write():
+            self._db_cursor.execute(
+                """
+                INSERT INTO chat_messages (id, conversation_id, content, timestamp)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    self._generate_id(conversation_id=conversation_id),
+                    conversation_id,
+                    formatted_content[0],
+                    int(time.time()),
+                ),
+            )
+            self._db_conn.commit()
 
-    def search_context(self, conversation_id: str, query: str, top_k: int = 3) -> str:
+        await asyncio.to_thread(_db_write)
+
+    async def search_context(
+        self, conversation_id: str, query: str, top_k: int = 3
+    ) -> str:
         """
         Searches the ChromaDB vector collection for context relevant to a given query
         within a specific conversation.
@@ -116,7 +127,8 @@ class ContextManager:
         """
         formatted_query: list[str] = [query]
 
-        results: QueryResult = self._collection.query(
+        results: QueryResult = await asyncio.to_thread(
+            self._collection.query,
             query_texts=formatted_query,
             n_results=top_k,
             where={"conversation_id": conversation_id},
@@ -144,7 +156,7 @@ class ContextManager:
         """
         self._db_cursor.execute(
             """
-            SELECT id, conversation_id, name, timestamp
+            SELECT conversation_id, name, timestamp
             FROM conversations
             """
         )
@@ -190,14 +202,18 @@ class ContextManager:
     def add_agent_log(self, log: LogEntry) -> None:
         self._agent_logs.append(log)
 
-    def add_conversation_id(self) -> str:
+    async def add_conversation_id(self) -> str:
         conversation_id = str(uuid.uuid4())
-        self._db_cursor.execute(
-            """
-            INSERT INTO conversations (conversation_id, name, timestamp)
-            VALUES (?, ?, ?)
-            """,
-            (conversation_id, "New Conversation", int(time.time())),
-        )
 
+        def insert_conversation():
+            self._db_cursor.execute(
+                """
+                INSERT INTO conversations (conversation_id, name, timestamp)
+                VALUES (?, ?, ?)
+                """,
+                (conversation_id, "New Conversation", int(time.time())),
+            )
+            self._db_conn.commit()
+
+        await asyncio.to_thread(insert_conversation)
         return conversation_id

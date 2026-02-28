@@ -1,40 +1,12 @@
 from fastapi import WebSocket
 
-from app.services.utils import Roles, State
+from app.services.utils import Path, Roles, State
 
 
 class WebSocketManager:
     """
     Manages active WebSocket connections for real-time communication.
     """
-
-    def __init__(self) -> None:
-        """
-        Initializes the WebSocketManager with an empty dictionary of active connections.
-        """
-        self.active_connections: dict[str, WebSocket] = {}
-
-    async def connect(self, websocket: WebSocket) -> None:
-        """
-        Accepts a new WebSocket connection and registers it with a conversation ID.
-
-        Args:
-            conversation_id: The ID of the conversation associated with this connection.
-            websocket: The WebSocket instance to connect.
-        """
-        # self.active_connections[conversation_id] = websocket
-
-        await websocket.accept()
-
-    async def disconnect(self, conversation_id: str):
-        """
-        Closes and removes a WebSocket connection for a given conversation ID.
-
-        Args:
-            conversation_id: The ID of the conversation to disconnect.
-        """
-        await self.active_connections[conversation_id].close()
-        del self.active_connections[conversation_id]
 
     async def send_status(
         self, websocket: WebSocket, status: State, agent: Roles | None
@@ -55,6 +27,20 @@ class WebSocketManager:
 
         await self.send_message(websocket=websocket, content=message)
 
+    async def send_current_path(self, websocket: WebSocket, path: Path) -> None:
+        """
+        Sends the current path through an active WebSocket connection.
+
+        Args:
+            websocket: The WebSocket instance to send the path through.
+        """
+        message: dict = {
+            "type": "path",
+            "path": f"Path {'A' if path == Path.A else 'B'}",
+        }
+
+        await self.send_message(websocket=websocket, content=message)
+
     async def send_message(
         self,
         websocket: WebSocket,
@@ -69,3 +55,18 @@ class WebSocketManager:
         """
 
         await websocket.send_json(content)
+
+    async def send_title(
+        self,
+        websocket: WebSocket,
+        title: str,
+    ) -> None:
+        """
+        Sends a title message through an active WebSocket connection.
+
+        Args:
+            websocket: The WebSocket instance to send the message through.
+            title: The title to send.
+        """
+
+        await websocket.send_json({"type": "title", "title": title})
