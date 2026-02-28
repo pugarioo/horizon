@@ -20,7 +20,12 @@ class AgentService:
         self.model: Optional[Llama] = None
         self.current_model_path: Optional[str] = None
 
-    async def load(self, path: str, n_gpu_layers: int = 50, n_ctx: int = 2048) -> None:
+    async def load(
+        self,
+        path: str,
+        n_ctx: int,
+        n_gpu_layers: int = 50,
+    ) -> None:
         """
         Loads an SLM model with dynamic hardware constraints.
 
@@ -60,7 +65,12 @@ class AgentService:
             await asyncio.to_thread(gc.collect)
             await asyncio.sleep(0.5)
 
-    async def swap(self, path: str, n_gpu_layers: int = 50, n_ctx: int = 2048) -> None:
+    async def swap(
+        self,
+        path: str,
+        n_ctx: int,
+        n_gpu_layers: int = 50,
+    ) -> None:
         """
         Swaps models, only triggering unload if a different model is requested.
         """
@@ -75,6 +85,7 @@ class AgentService:
         self,
         messages: List[ChatCompletionRequestMessage],
         temp: float,
+        max_tokens: int,
         stream: Literal[False] = False,
     ) -> CreateChatCompletionResponse: ...
 
@@ -83,6 +94,7 @@ class AgentService:
         self,
         messages: List[ChatCompletionRequestMessage],
         temp: float,
+        max_tokens: int,
         stream: Literal[True],
     ) -> Iterator[CreateChatCompletionStreamResponse]: ...
 
@@ -90,6 +102,7 @@ class AgentService:
         self,
         messages: List[ChatCompletionRequestMessage],
         temp: float,
+        max_tokens: int,
         stream: bool = False,
     ) -> CreateChatCompletionResponse | Iterator[CreateChatCompletionStreamResponse]:
         """
@@ -104,6 +117,7 @@ class AgentService:
             temperature=temp,
             repeat_penalty=1.15,
             stream=stream,
+            max_tokens=max_tokens,
         )
 
         return response

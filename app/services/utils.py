@@ -20,11 +20,18 @@ class Roles(Enum):
     Defines the specialized roles for different agent instances.
     """
 
-    GENERATOR_A = "GENERATOR_A"
-    GENERATOR_B = "GENERATOR_B"
-    CRITIC_A = "CRITIC_A"
-    CRITIC_B = "CRITIC_B"
+    GENERATOR = "GENERATOR"
+    CRITIC = "CRITIC"
     JUDGE = "JUDGE"
+
+
+class Path(Enum):
+    """
+    Defines the specialized paths for different agent instances.
+    """
+
+    A = "PATH_A"
+    B = "PATH_B"
 
 
 class LogEntry:

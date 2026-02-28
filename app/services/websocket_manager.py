@@ -1,6 +1,6 @@
 from fastapi import WebSocket
 
-from app.services.utils import Roles, State
+from app.services.utils import Path, Roles, State
 
 
 class WebSocketManager:
@@ -23,6 +23,20 @@ class WebSocketManager:
             "type": "status",
             "status": status.value,
             "agent": agent.value if agent else None,
+        }
+
+        await self.send_message(websocket=websocket, content=message)
+
+    async def send_current_path(self, websocket: WebSocket, path: Path) -> None:
+        """
+        Sends the current path through an active WebSocket connection.
+
+        Args:
+            websocket: The WebSocket instance to send the path through.
+        """
+        message: dict = {
+            "type": "path",
+            "path": f"Path {'A' if path == Path.A else 'B'}",
         }
 
         await self.send_message(websocket=websocket, content=message)

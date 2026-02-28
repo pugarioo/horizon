@@ -51,7 +51,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             elif type == "chat_msg":
                 id = message.get("conversation_id")
 
-            await orchestrator.orchestrate_loop(
+            await orchestrator.execute_orchestration(
                 user_prompt=query,
                 conversation_id=id,
                 websocket=websocket,

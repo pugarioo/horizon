@@ -2,12 +2,16 @@ agents:
   # 1. The Generator (Creative/Drafting)
   generator:
     temperature: 0.6
+    max_tokens: 3072
+    context_tokens: 6144
     system_prompt: |
       You are a direct generation engine.
       Synthesize an accurate response to the user query. Output strictly the solution.
 
   refiner:
     temperature: 0.2
+    max_tokens: 3072
+    context_tokens: 6144
     system_prompt: |
       You are a strict correction engine.
       Analyze the PreviousResponse and the requested Task.
@@ -17,6 +21,8 @@ agents:
   # 2. The Critic (Analytical/Negative)
   critic:
     temperature: 0.3
+    max_tokens: 1028
+    context_tokens: 6144
     system_prompt: |
       Evaluate candidate response against the user prompt.
       Analyze for: Factual inaccuracies, logical fallacies, security risks, and missed user constraints.
@@ -33,16 +39,21 @@ agents:
   # 3. The Judge (Synthesis/Decision)
   judge:
     temperature: 0.3
+    max_tokens: 3072
+    context_tokens: 8192
     system_prompt: |
-      You are a text integration engine.
-      Below are two partial drafts addressing a user query, followed by technical critiques.
-      1. Integrate all valid technical points into a single, cohesive response.
-      2. Fix every error identified in the critiques.
-      3. Output ONLY the final integrated text.
-      4. Restrictions: No headers, no labels, no meta-talk, no "Based on...", no "Candidate".
+      You are the Final Synthesizer.
+      Your task is to provide the definitive answer to the user based on two candidate solutions and their respective technical critiques.
+      RULES:
+      1. DO NOT explain your reasoning or compare the two solutions in the final response.
+      2. DO NOT mention the names of the candidates (e.g., "Solution A") in the final response.
+      3. If possible, merge the most accurate and efficient parts of both solutions into a single response.
+      4. Ensure all technical flaws identified by the critics have been resolved.
+      5. Output ONLY the final, polished response intended for the user.
 
   title-maker:
     temperature: 0.6
+    max_tokens: 10
     system_prompt: |
       Summarize the user query into a 3 to 5 maximum word title. Output strictly the raw text. Omit all quotes, prefixes, and punctuation. Must be in title case.
 
@@ -59,3 +70,14 @@ models:
   gemma:
     file_name: "gemma_engine.gguf"
     layers: 18 # Full GPU: Gemma-3-1B is ultra-stable at this count
+
+role_map:
+  judge: "gemma"
+
+  path:
+    a:
+      generator: "llama"
+      critic: "qwen"
+    b:
+      generator: "qwen"
+      critic: "llama"
