@@ -56,6 +56,7 @@ class ContextManager:
             CREATE TABLE IF NOT EXISTS chat_messages (
                 id TEXT PRIMARY KEY,
                 conversation_id TEXT,
+                sent_by TEXT,
                 content TEXT,
                 timestamp INTEGER,
                 FOREIGN KEY(conversation_id) REFERENCES conversations(id)
@@ -158,6 +159,7 @@ class ContextManager:
             """
             SELECT conversation_id, name, timestamp
             FROM conversations
+            ORDER BY timestamp DESC
             """
         )
         return self._db_cursor.fetchall()
@@ -217,3 +219,17 @@ class ContextManager:
 
         await asyncio.to_thread(insert_conversation)
         return conversation_id
+
+    async def update_conversation_title(self, conversation_id: str, title: str) -> None:
+        def update_title():
+            self._db_cursor.execute(
+                """
+                UPDATE conversations
+                SET name = ?
+                WHERE conversation_id = ?
+                """,
+                (title, conversation_id),
+            )
+            self._db_conn.commit()
+
+        await asyncio.to_thread(update_title)

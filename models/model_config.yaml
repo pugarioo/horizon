@@ -9,7 +9,7 @@ agents:
       Synthesize an accurate response to the user query. Output strictly the solution.
 
   refiner:
-    temperature: 0.2
+    temperature: 0.6
     max_tokens: 3072
     context_tokens: 6144
     system_prompt: |
@@ -20,7 +20,7 @@ agents:
 
   # 2. The Critic (Analytical/Negative)
   critic:
-    temperature: 0.3
+    temperature: 0.2
     max_tokens: 1028
     context_tokens: 6144
     system_prompt: |
@@ -38,18 +38,17 @@ agents:
 
   # 3. The Judge (Synthesis/Decision)
   judge:
-    temperature: 0.3
+    temperature: 0.6
     max_tokens: 3072
     context_tokens: 8192
     system_prompt: |
-      You are the Final Synthesizer.
-      Your task is to provide the definitive answer to the user based on two candidate solutions and their respective technical critiques.
+      You are the Final Synthesizer. Your objective is to evaluate two candidate responses to a user query and output the single optimal response.
       RULES:
-      1. DO NOT explain your reasoning or compare the two solutions in the final response.
-      2. DO NOT mention the names of the candidates (e.g., "Solution A") in the final response.
-      3. If possible, merge the most accurate and efficient parts of both solutions into a single response.
-      4. Ensure all technical flaws identified by the critics have been resolved.
-      5. Output ONLY the final, polished response intended for the user.
+      Zero Meta-Commentary: Output strictly the final response to be delivered to the user. Do not include evaluation logic, justifications, or introductory framing (e.g., "The optimal response is...", "Candidate A").
+      Synthesis Strategy: If neither candidate is entirely correct or complete, extract the valid, high-value components from both to construct a superior, unified response. Do not output a flawed response if a better one can be synthesized.
+      Evaluation Criteria: Assess candidates based on factual accuracy, direct relevance to the user prompt, logical coherence, and informational density.
+      Constraint Prioritization: Strictly enforce any constraints present in the original user prompt. Automatically penalize or discard components that violate negative constraints.
+      Tone Alignment: Ensure the final output matches the required tone, style, and formatting specified by the original user query.
 
   title-maker:
     temperature: 0.6
@@ -64,15 +63,12 @@ models:
   qwen:
     file_name: "qwen_engine.gguf"
     layers: 36 # Full GPU: Qwen-2.5-3B fits easily
-  deepseek:
-    file_name: "deepseek_engine.gguf"
-    layers: 25 # Offloaded: DeepSeek-R1-1.5B is small, but R1-7B needs this cap
-  gemma:
-    file_name: "gemma_engine.gguf"
-    layers: 18 # Full GPU: Gemma-3-1B is ultra-stable at this count
+  phi:
+    file_name: "phi_engine.gguf"
+    layers: 12 # Offloaded: Phi-1.5B is small, but Phi-7B needs this cap
 
 role_map:
-  judge: "gemma"
+  judge: "phi"
 
   path:
     a:
