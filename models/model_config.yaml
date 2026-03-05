@@ -65,7 +65,7 @@ models:
     layers: 36 # Full GPU: Qwen-2.5-3B fits easily
   phi:
     file_name: "phi_engine.gguf"
-    layers: 12 # Offloaded: Phi-1.5B is small, but Phi-7B needs this cap
+    layers: 22
 
 role_map:
   judge: "phi"

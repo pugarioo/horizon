@@ -61,7 +61,9 @@ class Orchestrator:
         Iterative orchestration using dynamic hardware constraints from nested YAML.
         """
 
-        await self.context_manager.store_memory(conversation_id, user_prompt)
+        await self.context_manager.store_memory(
+            conversation_id=conversation_id, content=user_prompt, sent_by="user"
+        )
 
         print("\nPATH A\n")
         await self.websocket_manager.send_current_path(websocket, Path.A)
@@ -129,7 +131,11 @@ class Orchestrator:
         clean_final_content = re.sub(
             r"<think>.*?</think>", "", full_content, flags=re.DOTALL
         ).strip()
-        await self.context_manager.store_memory(conversation_id, clean_final_content)
+        await self.context_manager.store_memory(
+            conversation_id=conversation_id,
+            content=clean_final_content,
+            sent_by="agent",
+        )
 
         await self.agent_service.unload()
         await self.websocket_manager.send_status(websocket, State.IDLE, None)
@@ -351,7 +357,6 @@ class Orchestrator:
             title = await self.generate_title(
                 user_prompt, conversation_id=conversation_id
             )
-            await self.context_manager.store_memory(conversation_id, title)
             await self.websocket_manager.send_title(websocket, title)
 
         init_completion = await self._run_step(

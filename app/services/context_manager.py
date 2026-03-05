@@ -67,7 +67,7 @@ class ContextManager:
         self._db_conn.commit()
 
     async def store_memory(
-        self, conversation_id: str, content: str | list[str]
+        self, conversation_id: str, content: str | list[str], sent_by: str
     ) -> None:
         """
         Stores chat content in both the ChromaDB vector collection and the SQLite chat_messages table.
@@ -97,12 +97,13 @@ class ContextManager:
         def _db_write():
             self._db_cursor.execute(
                 """
-                INSERT INTO chat_messages (id, conversation_id, content, timestamp)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO chat_messages (id, conversation_id, sent_by, content, timestamp)
+                VALUES (?, ?, ?, ?, ?)
                 """,
                 (
                     self._generate_id(conversation_id=conversation_id),
                     conversation_id,
+                    sent_by,
                     formatted_content[0],
                     int(time.time()),
                 ),
@@ -176,10 +177,10 @@ class ContextManager:
         """
         self._db_cursor.execute(
             """
-            SELECT id, content, timestamp
+            SELECT id, sent_by, content, timestamp
             FROM chat_messages
             WHERE conversation_id = ?
-            ORDER BY timestamp DESC
+            ORDER BY timestamp ASC
             """,
             (conversation_id,),
         )

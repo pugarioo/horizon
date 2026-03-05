@@ -80,6 +80,7 @@ def get_messages(conversation_id: str) -> dict:
     return {
         "conversation_id": conversation_id,
         "messages": [
-            {"id": m[0], "content": m[1], "timestamp": m[2]} for m in messages
+            {"id": m[0], "sent_by": m[1], "content": m[2], "timestamp": m[3]}
+            for m in messages
         ],
     }
