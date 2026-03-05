@@ -56,10 +56,8 @@ class WebSocketManager:
 
         await websocket.send_json(content)
 
-    async def send_title(
-        self,
-        websocket: WebSocket,
-        title: str,
+    async def send_conversaton_metadata(
+        self, websocket: WebSocket, title: str, conversation_id: str
     ) -> None:
         """
         Sends a title message through an active WebSocket connection.

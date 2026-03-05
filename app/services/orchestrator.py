@@ -357,7 +357,9 @@ class Orchestrator:
             title = await self.generate_title(
                 user_prompt, conversation_id=conversation_id
             )
-            await self.websocket_manager.send_title(websocket, title)
+            await self.websocket_manager.send_conversaton_metadata(
+                websocket=websocket, title=title, conversation_id=conversation_id
+            )
 
         init_completion = await self._run_step(
             websocket,
