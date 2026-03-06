@@ -56,6 +56,7 @@ class ContextManager:
             CREATE TABLE IF NOT EXISTS chat_messages (
                 id TEXT PRIMARY KEY,
                 conversation_id TEXT,
+                sent_by TEXT,
                 content TEXT,
                 timestamp INTEGER,
                 FOREIGN KEY(conversation_id) REFERENCES conversations(id)
@@ -66,7 +67,7 @@ class ContextManager:
         self._db_conn.commit()
 
     async def store_memory(
-        self, conversation_id: str, content: str | list[str]
+        self, conversation_id: str, content: str | list[str], sent_by: str
     ) -> None:
         """
         Stores chat content in both the ChromaDB vector collection and the SQLite chat_messages table.
@@ -96,12 +97,13 @@ class ContextManager:
         def _db_write():
             self._db_cursor.execute(
                 """
-                INSERT INTO chat_messages (id, conversation_id, content, timestamp)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO chat_messages (id, conversation_id, sent_by, content, timestamp)
+                VALUES (?, ?, ?, ?, ?)
                 """,
                 (
                     self._generate_id(conversation_id=conversation_id),
                     conversation_id,
+                    sent_by,
                     formatted_content[0],
                     int(time.time()),
                 ),
@@ -158,6 +160,7 @@ class ContextManager:
             """
             SELECT conversation_id, name, timestamp
             FROM conversations
+            ORDER BY timestamp DESC
             """
         )
         return self._db_cursor.fetchall()
@@ -174,10 +177,10 @@ class ContextManager:
         """
         self._db_cursor.execute(
             """
-            SELECT id, content, timestamp
+            SELECT id, sent_by, content, timestamp
             FROM chat_messages
             WHERE conversation_id = ?
-            ORDER BY timestamp DESC
+            ORDER BY timestamp ASC
             """,
             (conversation_id,),
         )
@@ -217,3 +220,17 @@ class ContextManager:
 
         await asyncio.to_thread(insert_conversation)
         return conversation_id
+
+    async def update_conversation_title(self, conversation_id: str, title: str) -> None:
+        def update_title():
+            self._db_cursor.execute(
+                """
+                UPDATE conversations
+                SET name = ?
+                WHERE conversation_id = ?
+                """,
+                (title, conversation_id),
+            )
+            self._db_conn.commit()
+
+        await asyncio.to_thread(update_title)

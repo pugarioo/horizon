@@ -61,12 +61,17 @@ class Orchestrator:
         Iterative orchestration using dynamic hardware constraints from nested YAML.
         """
 
-        await self.context_manager.store_memory(conversation_id, user_prompt)
+        await self.context_manager.store_memory(
+            conversation_id=conversation_id, content=user_prompt, sent_by="user"
+        )
 
+        print("\nPATH A\n")
         await self.websocket_manager.send_current_path(websocket, Path.A)
         current_candidate_a = await self._run_path(
             websocket, conversation_id, user_prompt, Path.A
         )
+
+        print("\nPATH B\n")
         await self.websocket_manager.send_current_path(websocket, Path.B)
         current_candidate_b = await self._run_path(
             websocket, conversation_id, user_prompt, Path.B
@@ -126,7 +131,11 @@ class Orchestrator:
         clean_final_content = re.sub(
             r"<think>.*?</think>", "", full_content, flags=re.DOTALL
         ).strip()
-        await self.context_manager.store_memory(conversation_id, clean_final_content)
+        await self.context_manager.store_memory(
+            conversation_id=conversation_id,
+            content=clean_final_content,
+            sent_by="agent",
+        )
 
         await self.agent_service.unload()
         await self.websocket_manager.send_status(websocket, State.IDLE, None)
@@ -345,9 +354,12 @@ class Orchestrator:
         )
 
         if path == Path.A and self._is_new(conversation_id):
-            title = await self.generate_title(user_prompt)
-            await self.context_manager.store_memory(conversation_id, title)
-            await self.websocket_manager.send_title(websocket, title)
+            title = await self.generate_title(
+                user_prompt, conversation_id=conversation_id
+            )
+            await self.websocket_manager.send_conversaton_metadata(
+                websocket=websocket, title=title, conversation_id=conversation_id
+            )
 
         init_completion = await self._run_step(
             websocket,
@@ -419,7 +431,7 @@ class Orchestrator:
         )
         return len(messages) == 1
 
-    async def generate_title(self, user_prompt: str) -> str:
+    async def generate_title(self, user_prompt: str, conversation_id: str) -> str:
         title: CreateChatCompletionResponse = await self.agent_service.generate(
             messages=[
                 {
@@ -436,6 +448,10 @@ class Orchestrator:
             temp=self.model_config["agents"]["title-maker"]["temperature"],
             max_tokens=self.model_config["agents"]["title-maker"]["max_tokens"],
             stream=False,
+        )
+
+        await self.context_manager.update_conversation_title(
+            conversation_id, self._get_text(title)
         )
 
         return self._get_text(title)

@@ -1,0 +1,58 @@
+
+ALGORITHM Heterogeneous_Swarm_Orchestration
+INPUT: user_prompt, conversation_id
+OUTPUT: clean_final_content
+
+BEGIN
+    // 1. FUNDAMENTALS: Initialize Session and Inputs
+    STORE_MEMORY(conversation_id, user_prompt, "user")
+
+    // 2. DUAL-PATH EXECUTION (Path A and Path B)
+    FOR each PATH in {Path_A, Path_B} DO:
+
+        generator_model = GET_CONFIG(PATH, "generator")
+        critic_model = GET_CONFIG(PATH, "critic")
+
+        // Load Generator and Produce Initial Result
+        LOAD_MODEL(generator_model)
+        current_candidate = GENERATE(user_prompt)
+
+        // 3. CRITIQUE AND REFINEMENT LOOP
+        attempts = 0
+        WHILE attempts < MAX_RETRIES DO:
+            // Swap to Critic to Evaluate Output
+            SWAP_MODEL(critic_model)
+            critique = GENERATE(user_prompt, current_candidate)
+
+            // Self-Correction Logic
+            IF NOT CONTAINS_REFINEMENT_REQUEST(critique) THEN
+                BREAK
+            END IF
+
+            // Swap to Generator to Apply Critique
+            SWAP_MODEL(generator_model)
+            current_candidate = GENERATE(user_prompt, critique)
+
+            attempts = attempts + 1
+        END WHILE
+
+        UNLOAD_MODEL()
+        STORE_PATH_RESULT(PATH, current_candidate)
+    END FOR
+
+    // 4. FINAL SYNTHESIS: Judge Phase
+    LOAD_MODEL(judge_model)
+    solution_a = GET_PATH_RESULT(Path_A)
+    solution_b = GET_PATH_RESULT(Path_B)
+
+    // Synthesize Optimal Response
+    full_content = GENERATE_STEP(Roles.JUDGE, user_prompt, solution_a, solution_b)
+
+    // 5. POST-PROCESSING AND OUTPUT
+    clean_final_content = GET_CONTENT(full_content)
+
+    STORE_MEMORY(conversation_id, clean_final_content, "agent")
+    UNLOAD_ALL_MODELS()
+
+    RETURN clean_final_content
+END
