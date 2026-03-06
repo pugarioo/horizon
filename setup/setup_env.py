@@ -65,12 +65,6 @@ def download_models() -> None:
 
 
 def download_embedding_model() -> None:
-    try:
-        import huggingface_hub
-    except ImportError:
-        subprocess.check_call(
-            [sys.executable, "-m", "pip", "install", "huggingface_hub"]
-        )
 
     from huggingface_hub import snapshot_download
 
