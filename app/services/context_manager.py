@@ -115,36 +115,28 @@ class ContextManager:
     async def search_context(
         self, conversation_id: str, query: str, top_k: int = 3
     ) -> str:
-        """
-        Searches the ChromaDB vector collection for context relevant to a given query
-        within a specific conversation.
+        existing = self._collection.get(where={"conversation_id": conversation_id})
+        doc_count = len(existing["documents"] or [])
 
-        Args:
-            conversation_id: The ID of the conversation to search within.
-            query: The query string or list of strings to search for.
-            top_k: The number of top results to return.
+        if doc_count == 0:
+            return ""
 
-        Returns:
-            A QueryResult object containing the search results.
-        """
-        formatted_query: list[str] = [query]
+        safe_top_k = min(top_k, doc_count)
 
         results: QueryResult = await asyncio.to_thread(
             self._collection.query,
-            query_texts=formatted_query,
-            n_results=top_k,
+            query_texts=[query],
+            n_results=safe_top_k,
             where={"conversation_id": conversation_id},
         )
 
         result_dict = cast(dict[str, Any], results)
-
         raw_docs = result_dict.get("documents", [[]])[0]
 
         if not raw_docs:
             return ""
 
         unique_docs: list[str] = list(dict.fromkeys(raw_docs))
-
         formatted_docs = [f"-{doc}" for doc in unique_docs]
 
         return "\n".join(formatted_docs)

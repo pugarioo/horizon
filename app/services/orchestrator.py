@@ -6,6 +6,8 @@ from typing import Any, List
 import yaml
 from fastapi import WebSocket
 from llama_cpp import (
+    ChatCompletionRequestAssistantMessage,
+    ChatCompletionRequestUserMessage,
     ChatCompletionStreamResponseDelta,
     ChatCompletionStreamResponseDeltaEmpty,
     Iterator,
@@ -212,30 +214,54 @@ class Orchestrator:
     ) -> CreateChatCompletionResponse:
         """
         Generates an initial response by fetching relevant context from memory.
-
         Args:
             conversation_id: The ID of the conversation.
             user_prompt: The prompt provided by the user.
-
         Returns:
             A CreateChatCompletionResponse with the initial generated answer.
         """
+        RECENT_TURNS = 3
 
-        relevant_context: str = await self.context_manager.search_context(
-            query=user_prompt, conversation_id=conversation_id
-        )
-
-        content: str = f"{relevant_context} {user_prompt}"
+        history = self.context_manager.get_conversation_messages(conversation_id)
+        recent = history[-(RECENT_TURNS * 2) : -1]  # exclude current user message
 
         query: List[ChatCompletionRequestMessage] = [
             {
                 "role": "system",
                 "content": self.model_config["agents"]["generator"]["system_prompt"],
-            },
-            {"role": "user", "content": content},
+            }
         ]
 
-        print(self.model_config["agents"]["generator"]["max_tokens"])
+        # For long conversations, pull semantically relevant older context via ChromaDB
+        if len(history) > RECENT_TURNS * 2:
+            relevant_context: str = await self.context_manager.search_context(
+                query=user_prompt, conversation_id=conversation_id
+            )
+            if relevant_context:
+                query.append(
+                    {
+                        "role": "system",
+                        "content": f"Relevant prior context:\n{relevant_context}",
+                    }
+                )
+
+        # Append recent turns as structured conversation
+        for _, sent_by, content, _ in recent:
+            if sent_by == "user":
+                query.append(
+                    ChatCompletionRequestUserMessage(role="user", content=content)
+                )
+            else:
+                query.append(
+                    ChatCompletionRequestAssistantMessage(
+                        role="assistant", content=content
+                    )
+                )
+
+        # Append current prompt
+        query.append({"role": "user", "content": user_prompt})
+
+        print("\n\nQUEERRYY\n", query)
 
         response = await self.agent_service.generate(
             messages=query,
@@ -243,7 +269,6 @@ class Orchestrator:
             max_tokens=self.model_config["agents"]["generator"]["max_tokens"],
             stream=False,
         )
-
         return response
 
     async def _generate_refined_response(

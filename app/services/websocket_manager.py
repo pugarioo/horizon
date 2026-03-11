@@ -67,4 +67,10 @@ class WebSocketManager:
             title: The title to send.
         """
 
-        await websocket.send_json({"type": "title", "title": title})
+        await websocket.send_json(
+            {
+                "type": "conv_metadata",
+                "title": title,
+                "conversation_id": conversation_id,
+            }
+        )
