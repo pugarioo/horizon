@@ -57,3 +57,9 @@ class LogEntry:
             "total_tokens": 0,
         }
         self.duration = duration
+
+
+class CandidateSolution:
+    def __init__(self, response: str, notes: str):
+        self.response = response
+        self.notes = notes

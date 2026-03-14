@@ -21,7 +21,7 @@ from llama_cpp.llama_types import (
 from app.paths import MODELS_CONFIG_PATH, MODELS_DIR
 from app.services.agent_service import AgentService
 from app.services.context_manager import ContextManager
-from app.services.utils import LogEntry, Path, Roles, State
+from app.services.utils import CandidateSolution, LogEntry, Path, Roles, State
 from app.services.websocket_manager import WebSocketManager
 
 
@@ -98,19 +98,12 @@ class Orchestrator:
             websocket, State.GENERATING, Roles.JUDGE
         )
 
-        solution_a_text = (
-            self._get_text(current_candidate_a).replace("[RA]", "").strip()
-        )
-        solution_b_text = (
-            self._get_text(current_candidate_b).replace("[RA]", "").strip()
-        )
-
         stream: Iterator[
             CreateChatCompletionStreamResponse
         ] = await self._evaluate_and_synthesize(
             user_prompt=user_prompt,
-            candidate_solution_a=solution_a_text,
-            candidate_solution_b=solution_b_text,
+            candidate_solution_a=current_candidate_a,
+            candidate_solution_b=current_candidate_b,
         )
 
         full_content = ""
@@ -172,11 +165,13 @@ class Orchestrator:
 
         return response
 
+    # async def _generate_final
+
     async def _evaluate_and_synthesize(
         self,
         user_prompt: str,
-        candidate_solution_a: str,
-        candidate_solution_b: str,
+        candidate_solution_a: CandidateSolution,
+        candidate_solution_b: CandidateSolution,
     ) -> Iterator[CreateChatCompletionStreamResponse]:
         """
         Evaluates two candidate solutions and synthesizes a final response.
@@ -190,7 +185,15 @@ class Orchestrator:
             An iterator of CreateChatCompletionStreamResponse for the synthesized response.
         """
 
-        content: str = f"UserPrompt:{user_prompt}\n SolutionA:{candidate_solution_a}\n SolutionB:{candidate_solution_b}"
+        solution_a_text = candidate_solution_a.response.replace("[RA]", "").strip()
+        solution_b_text = candidate_solution_b.response.replace("[RA]", "").strip()
+
+        content: str = f"""UserPrompt:{user_prompt}\n
+                        SolutionA:{solution_a_text}\n
+                        SolutionA Notes:{candidate_solution_a.notes}\n
+                        SolutionB:{solution_b_text}\n
+                        SolutionB Notes:{candidate_solution_b.notes}
+                        """
 
         response: Iterator[
             CreateChatCompletionStreamResponse
@@ -260,8 +263,6 @@ class Orchestrator:
 
         # Append current prompt
         query.append({"role": "user", "content": user_prompt})
-
-        print("\n\nQUEERRYY\n", query)
 
         response = await self.agent_service.generate(
             messages=query,
@@ -355,9 +356,11 @@ class Orchestrator:
 
     async def _run_path(
         self, websocket: WebSocket, conversation_id: str, user_prompt: str, path: Path
-    ) -> CreateChatCompletionResponse:
+    ) -> CandidateSolution:
 
         MAX_RETRIES = 2
+
+        is_initial = True
 
         generator_model: str = self.model_config["role_map"]["path"][
             "a" if path == Path.A else "b"
@@ -369,35 +372,53 @@ class Orchestrator:
         await self.websocket_manager.send_status(
             websocket, State.LOADING_MODEL, Roles.GENERATOR
         )
-        # Pulling nested config: models -> llama -> [file_name, layers]
-        await self.agent_service.load(
-            path=str(
-                MODELS_DIR / self.model_config["models"][generator_model]["file_name"]
-            ),
-            n_gpu_layers=self.model_config["models"][generator_model]["layers"],
-            n_ctx=self.model_config["agents"]["generator"]["context_tokens"],
-        )
 
-        if path == Path.A and self._is_new(conversation_id):
-            title = await self.generate_title(
-                user_prompt, conversation_id=conversation_id
-            )
-            await self.websocket_manager.send_conversaton_metadata(
-                websocket=websocket, title=title, conversation_id=conversation_id
-            )
-
-        init_completion = await self._run_step(
-            websocket,
-            Roles.GENERATOR,
-            self._generate_initial_response,
-            conversation_id,
-            user_prompt,
-        )
-        current_candidate: CreateChatCompletionResponse = init_completion
-
+        current_critique: str = ""
+        current_candidate: str = ""
         attempts_a = 0
 
         while attempts_a < MAX_RETRIES:
+            # Pulling nested config: models -> llama -> [file_name, layers]
+            await self.agent_service.swap(
+                path=str(
+                    MODELS_DIR
+                    / self.model_config["models"][generator_model]["file_name"]
+                ),
+                n_gpu_layers=self.model_config["models"][generator_model]["layers"],
+                n_ctx=self.model_config["agents"]["generator"]["context_tokens"],
+            )
+
+            if path == Path.A and self._is_new(conversation_id):
+                title = await self.generate_title(
+                    user_prompt, conversation_id=conversation_id
+                )
+                await self.websocket_manager.send_conversaton_metadata(
+                    websocket=websocket, title=title, conversation_id=conversation_id
+                )
+
+            if is_initial:
+                init_completion = await self._run_step(
+                    websocket,
+                    Roles.GENERATOR,
+                    self._generate_initial_response,
+                    conversation_id,
+                    user_prompt,
+                )
+
+                current_candidate = self._get_text(init_completion)
+                is_initial = False
+
+            else:
+                refined_response: CreateChatCompletionResponse = await self._run_step(
+                    websocket,
+                    Roles.GENERATOR,
+                    self._generate_refined_response,
+                    user_prompt,
+                    current_candidate,
+                    current_critique,
+                )
+                current_candidate = self._get_text(refined_response)
+
             # Swap to Qwen for Critique
             await self.websocket_manager.send_status(
                 websocket, State.SWAPPING_MODEL, Roles.CRITIC
@@ -415,40 +436,22 @@ class Orchestrator:
                 Roles.CRITIC,
                 self._generate_critique,
                 user_prompt,
-                self._get_text(current_candidate),
+                current_candidate,
             )
-            critique_text: str = self._get_text(critique)
+            current_critique = self._get_text(critique)
 
-            if not self.contains_refinement_request(text=critique_text):
+            if not self.contains_refinement_request(text=current_critique):
                 break
 
-            # Swap back to Llama for Refinement
-            await self.websocket_manager.send_status(
-                websocket, State.SWAPPING_MODEL, Roles.GENERATOR
-            )
-            await self.agent_service.swap(
-                path=str(
-                    MODELS_DIR
-                    / self.model_config["models"][generator_model]["file_name"]
-                ),
-                n_gpu_layers=self.model_config["models"][generator_model]["layers"],
-                n_ctx=self.model_config["agents"]["generator"]["context_tokens"],
-            )
-
-            refined_response: CreateChatCompletionResponse = await self._run_step(
-                websocket,
-                Roles.GENERATOR,
-                self._generate_refined_response,
-                user_prompt,
-                current_candidate,
-                critique_text,
-            )
-            current_candidate = refined_response
             attempts_a += 1
 
         await self.agent_service.unload()
 
-        return current_candidate
+        candidate_solution: CandidateSolution = CandidateSolution(
+            response=current_candidate, notes=current_critique
+        )
+
+        return candidate_solution
 
     def _is_new(self, conversation_id: str) -> bool:
         messages: List = self.context_manager.get_conversation_messages(
