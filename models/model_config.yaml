@@ -1,7 +1,7 @@
 agents:
   # 1. The Generator (Creative/Drafting)
   generator:
-    temperature: 0.6
+    temperature: 0.85
     max_tokens: 3072
     context_tokens: 6144
     system_prompt: |
@@ -42,7 +42,7 @@ agents:
       - Do not wrap normal text in triple-backtick code fences.
 
   refiner:
-    temperature: 0.6
+    temperature: 0.85
     max_tokens: 3072
     context_tokens: 6144
     system_prompt: |
@@ -71,7 +71,7 @@ agents:
 
   # 2. The Critic (Analytical/Negative)
   critic:
-    temperature: 0.6
+    temperature: 0.85
     max_tokens: 1028
     context_tokens: 6144
     system_prompt: |
@@ -184,7 +184,7 @@ agents:
       --------------------------------------------------
   # 3. The Judge (Synthesis/Decision)
   judge:
-    temperature: 0.6
+    temperature: 0.85
     max_tokens: 3072
     context_tokens: 8192
     system_prompt: |
