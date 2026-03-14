@@ -202,6 +202,7 @@ agents:
       # CORE INSTRUCTIONS
       YOU MUST FOLLOW THESE RULES:
       1. **EVALUATE BOTH CANDIDATE DRAFTS INTERNALLY**
+         - FAVOR ANSWERS WITH HIGHER CONFIDENCE LEVEL
          - IDENTIFY correct information
          - DETECT missing explanations
          - REMOVE incorrect claims or weak reasoning
